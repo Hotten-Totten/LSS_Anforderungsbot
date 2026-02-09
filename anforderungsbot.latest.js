@@ -8,25 +8,19 @@ Changelog:
 (function () {
   'use strict';
 
-  // ===== Version exportieren (Loader zeigt das an) =====
   window.__ANFB_VERSION__ = '0.0.15.36';
 
-  // ===== Loader-Key Check (Deterrent, kein echter Kopierschutz) =====
-  // Muss zum LOADER_KEY im Loader passen!
   const EXPECT_KEY = 'ANFB-9f3c2d4a1b7e49d8a6c1f0b2c4d6e8aa';
   const got = window.__ANFB_LOADER_KEY__;
-
   if (got !== EXPECT_KEY) {
     console.warn('[ANFB] Bitte den offiziellen Loader nutzen. Direktstart blockiert.');
     return;
   }
 
-  // ===== Doppelstart verhindern =====
-  if (window.__ANFB_LOADED__) {
-    console.warn('[ANFB] bereits geladen – stoppe Doppelstart');
-    return;
-  }
+  if (window.__ANFB_LOADED__) return;
   window.__ANFB_LOADED__ = true;
+
+  // Main
     console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
@@ -1881,16 +1875,6 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
   });
 }
 
-
-
-})();
-
-
-  console.log('[ANFB] ✅ Bot gestartet (GitHub latest.js)');
-
-  // >>>>>>>> DEIN BOT CODE START <<<<<<<<
-  // (Hier alles rein)
-  // >>>>>>>> DEIN BOT CODE ENDE <<<<<<<<
+ console.log('[ANFB] ✅ Bot gestartet (GitHub latest.js)');
 
 })();
-
