@@ -1173,7 +1173,7 @@ const detBox    = box.querySelector('#aao-details');
       if (btn) btn.click();
     });
   }
-
+/*
   // ── Auto/Schwelle ───────────────────────────────────────────
   const AUTO_KEY   = 'aao_auto_dispatch';
   const THRESH_KEY = 'aao_credit_threshold';
@@ -1252,6 +1252,12 @@ const focusByCredits = () => {
   }
 };
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(()=>focusByCredits()); else setTimeout(focusByCredits,0);
+*/
+  // ── Auto/Schwelle ───────────────────────────────────────────
+  // RAUS: Auto-Button + Schwelle + Auto-Klick-Logik
+  const ctrl = box.querySelector('#aao-ctrl-row');
+  if (ctrl) ctrl.remove();   // oder: ctrl.innerHTML = '';
+
 
   // ENTER-Komfort
   if (!box.dataset.enterHooked) {
@@ -1275,7 +1281,6 @@ const focusByCredits = () => {
     });
   } catch {}
 }
-
 
 
 
