@@ -6,26 +6,27 @@ Version: 0.0.15.36
 (function () {
   'use strict';
 
-  // ===== VERSION SOFORT EXPORTIEREN =====
+  // ===== SOFORT exportieren =====
   window.__ANFB_VERSION__ = '0.0.15.36';
 
-  console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
+  console.log('[ANFB] LIVE', window.__ANFB_VERSION__);
 
-  // ===== Loader-Key Check =====
+  // ===== Loader-Check =====
   const EXPECT_KEY = 'ANFB-9f3c2d4a1b7e49d8a6c1f0b2c4d6e8aa';
   if (window.__ANFB_LOADER_KEY__ !== EXPECT_KEY) {
-    console.warn('[ANFB] Bitte den offiziellen Loader nutzen. Direktstart blockiert.');
+    console.warn('[ANFB] falscher Loader – Abbruch');
     return;
   }
 
   // ===== Doppelstart verhindern =====
   if (window.__ANFB_LOADED__) {
-    console.warn('[ANFB] bereits geladen – stoppe Doppelstart');
+    console.warn('[ANFB] Doppelstart verhindert');
     return;
   }
   window.__ANFB_LOADED__ = true;
 
-  console.log('[ANFB] ✅ Bot startet jetzt…');
+  console.log('[ANFB] ✅ Bot initialisiert');
+
 
   // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
     console.clear();
@@ -1881,5 +1882,7 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     savePos(c.x, c.y);
   });
 }
-    console.log('[ANFB] ✅ Bot initialisiert');
+  console.log('[ANFB] 🚀 Bot vollständig gestartet');
+
 })();
+
