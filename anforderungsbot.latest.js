@@ -1,13 +1,3 @@
-// ==UserScript==
-// @name         AnforderungsBot 0.0.15.36 Aktuell
-// @namespace    https://deinprojekt.de/AnforderungsBot
-// @version      0.0.15.36
-// @             UI verschieben: Zeile 861
-// @description  Automatische Fahrzeug-Auswahl + Patienten-Nachalarmierung + UI-Anzeige, Nur max. 1x LNA + 1x OrgL Alarmierung - egal wieviel gefordert werden
-// @match        https://www.leitstellenspiel.de/*
-// @grant        none
-// ==/UserScript==
-
 (function () {
     'use strict';
     console.clear();
