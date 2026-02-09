@@ -1,26 +1,32 @@
 /* 
 LSS_Anforderungsbot
 Version: 0.0.15.36
-Changelog:
-- 0.0.15.36: Patienten-Nachalarm + UI-Box + GKW/Boote Logik
 */
 
 (function () {
   'use strict';
+console.log('[ANFB] LIVE TEST', new Date().toISOString());
 
+  // Version für Loader
   window.__ANFB_VERSION__ = '0.0.15.36';
 
+  // Key Check (nur Abschreckung)
   const EXPECT_KEY = 'ANFB-9f3c2d4a1b7e49d8a6c1f0b2c4d6e8aa';
-  const got = window.__ANFB_LOADER_KEY__;
-  if (got !== EXPECT_KEY) {
+  if (window.__ANFB_LOADER_KEY__ !== EXPECT_KEY) {
     console.warn('[ANFB] Bitte den offiziellen Loader nutzen. Direktstart blockiert.');
     return;
   }
 
-  if (window.__ANFB_LOADED__) return;
+  // Doppelstart Bot verhindern
+  if (window.__ANFB_LOADED__) {
+    console.warn('[ANFB] bereits geladen – stoppe Doppelstart');
+    return;
+  }
   window.__ANFB_LOADED__ = true;
 
-  // Main
+  console.log('[ANFB] ✅ Bot startet jetzt…');
+
+  // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
     console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
