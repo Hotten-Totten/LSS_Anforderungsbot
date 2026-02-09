@@ -1,2 +1,2 @@
 # LSS_Anforderungsbot
-Alarmieren ohne AAO oder nerviges geklicke
+Alarmieren ohne AAO und nerviges geklicke
