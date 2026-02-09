@@ -1875,6 +1875,6 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
   });
 }
 
- console.log('[ANFB] ✅ Bot gestartet (GitHub latest.js)');
+
 
 })();
