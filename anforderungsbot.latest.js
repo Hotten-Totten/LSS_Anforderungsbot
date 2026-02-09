@@ -6,30 +6,15 @@ Version: 0.0.15.36
 (function () {
   'use strict';
 
-  const ANFB_VERSION = '0.0.15.36';
-  window.__ANFB_VERSION__ = ANFB_VERSION;
+  // ===== VERSION SOFORT EXPORTIEREN =====
+  window.__ANFB_VERSION__ = '0.0.15.36';
 
-  console.log('[ANFB] LIVE TEST', new Date().toISOString(), 'Version:', ANFB_VERSION);
+  console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
-  // ===== Key Check (nur Abschreckung) =====
+  // ===== Loader-Key Check =====
   const EXPECT_KEY = 'ANFB-9f3c2d4a1b7e49d8a6c1f0b2c4d6e8aa';
   if (window.__ANFB_LOADER_KEY__ !== EXPECT_KEY) {
     console.warn('[ANFB] Bitte den offiziellen Loader nutzen. Direktstart blockiert.');
-    return;
-  }
-
-  // ===== Optional: Host-Check gegen Fremdhosting =====
-  // (erlaubt GitHub Pages + raw GitHub)
-  try {
-    const src = document.currentScript?.src || '';
-    const host = new URL(src).host;
-    const ALLOWED = ['hotten-totten.github.io', 'raw.githubusercontent.com'];
-    if (!ALLOWED.includes(host)) {
-      console.warn('[ANFB] Fremdhosting blockiert:', host);
-      return;
-    }
-  } catch (e) {
-    console.warn('[ANFB] Host-Check fehlgeschlagen');
     return;
   }
 
