@@ -29,7 +29,7 @@ Version: 0.0.15.37
 
 
   // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
-     console.clear();
+    console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -849,7 +849,8 @@ function renderInfoBox(doc, typeIdCounts, selectedTypeCounts,
                       patienten, gefangene,
                       einsatzName, missionTypeId, eingangsZeit,
                       fehlende, hilfe,
-                      statusText = '', credits = '') {
+                      statusText = '', credits = '', missingTypeCounts = {}) {
+
 
   // ── Helpers ─────────────────────────────────────────────────
   const fmt = n => {
@@ -1044,11 +1045,17 @@ box.innerHTML = `
   <div><b>Status:</b> <span id="aao-status" style="color:#7cf">${statusText || 'Bereit…'}</span></div>
 
   <div style="margin-top:6px;">
-    <button id="aao-toggle-details" style="${btnBase}background:#555;">▾ Details</button>
+    <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">
+      <button id="aao-toggle-details" style="${btnBase}background:#555;">▾ Details</button>
+      <button id="aao-toggle-missing" style="${btnBase}background:#8e24aa;display:none;">▾ Fehlende Fahrzeuge</button>
+    </div>
+
     <div id="aao-details" style="display:none;margin-top:6px;">
       <div><b>🚨 Fehlende Anforderungen</b>${makeList(fehlende)}</div>
       <div style="margin-top:6px;"><b>📖 Hilfe-Seite</b>${makeList(hilfe)}</div>
     </div>
+
+    <div id="aao-missing-list" style="display:none;margin-top:6px;"></div>
   </div>
 `;
 
@@ -1071,6 +1078,47 @@ const bNext     = box.querySelector('#btn-next');
 const bClose    = box.querySelector('#btn-close');
 const bDet      = box.querySelector('#aao-toggle-details');
 const detBox    = box.querySelector('#aao-details');
+
+// ✅ NEU: Missing-Liste befüllen (nur wenn was fehlt)
+// ✅ NEU: Missing-Button + Box
+const bMiss   = box.querySelector('#aao-toggle-missing');
+const missBox = box.querySelector('#aao-missing-list');
+
+// ✅ Missing-Liste befüllen (und automatisch aufklappen)
+const missingEntries = Object.entries(missingTypeCounts || {}).filter(([,c]) => c > 0);
+const typeName = (tid) => (vehicleTypeNameVariants?.[tid]?.[0] || ('Typ ' + tid));
+
+if (bMiss && missBox && missingEntries.length) {
+  bMiss.style.display = 'inline-block';
+
+  missBox.innerHTML =
+    '<div><b>🧾 Fehlende Fahrzeuge</b></div>' +
+    '<ul style="margin:4px 0 0 16px;padding:0;">' +
+    missingEntries
+      .sort((a,b)=> (+a[0])-(+b[0]))
+      .map(([tid,c]) => `<li>${c}× ${typeName(+tid)} <span style="opacity:.7">(Typ ${tid})</span></li>`)
+      .join('') +
+    '</ul>';
+
+  // ✅ automatisch offen starten
+  missBox.style.display = 'block';
+  bMiss.textContent = '▴ Fehlende Fahrzeuge';
+} else if (bMiss && missBox) {
+  // wenn nix fehlt: Button verstecken und Box zu
+  bMiss.style.display = 'none';
+  missBox.style.display = 'none';
+}
+
+// ✅ Toggle (Schließen/Öffnen jederzeit möglich)
+if (bMiss && missBox) {
+  bMiss.onclick = () => {
+    const isOpen = missBox.style.display !== 'none';
+    missBox.style.display = isOpen ? 'none' : 'block';
+    bMiss.textContent = (isOpen ? '▾ Fehlende Fahrzeuge' : '▴ Fehlende Fahrzeuge');
+  };
+}
+
+
 
   // Details-Toggle
   bDet.onclick = () => {
@@ -1541,34 +1589,35 @@ invisible.onload = () => {
       const istHilfeSeite = fehlendeAnforderungen.length === 0;
 
       // ── 7) Fahrzeuge wählen ──
-      let typeIdCounts = {}, selectedTypeCounts = {};
-      ({ typeIdCounts, selectedTypeCounts } = selectVehiclesByRequirement(
-        quelle,
-        vehicleTypeNameVariants,
-        actualPatients,
-        istHilfeSeite,
-        addInfo.nefProb || 0,
-        addInfo.rthProb || 0
-      ));
+      let typeIdCounts = {}, selectedTypeCounts = {}, missingTypeCounts = {};
+({ typeIdCounts, selectedTypeCounts, missingTypeCounts } = selectVehiclesByRequirement(
+  quelle,
+  vehicleTypeNameVariants,
+  actualPatients,
+  istHilfeSeite,
+  addInfo.nefProb || 0,
+  addInfo.rthProb || 0
+));
 
       // ── 8) Prüfen & InfoBox anzeigen ──
       allOk = Object.entries(typeIdCounts)
         .every(([tid, need]) => (selectedTypeCounts[tid] || 0) >= need);
 
       renderInfoBox(
-        doc,
-        typeIdCounts,
-        selectedTypeCounts,
-        patienten,
-        gefangene,
-        einsatzName,
-        missionTypeId,
-        eingangsZeit,
-        fehlendeAnforderungen,
-        hilfeAnforderungen,
-        '', // statusText
-        credits // 💰 richtiges Argument
-      );
+  doc,
+  typeIdCounts,
+  selectedTypeCounts,
+  patienten,
+  gefangene,
+  einsatzName,
+  missionTypeId,
+  eingangsZeit,
+  fehlendeAnforderungen,
+  hilfeAnforderungen,
+  '',
+  credits,
+  missingTypeCounts
+);
 
       // ── 9) Nachladen falls nötig ──
       if (!allOk && iframe._reloadAttempts < MAX_RELOADS) {
@@ -1576,10 +1625,19 @@ invisible.onload = () => {
         if (btn) {
           iframe._reloadAttempts++;
           renderInfoBox(
-            doc, typeIdCounts, selectedTypeCounts, patienten, gefangene, einsatzName,
-            missionTypeId, eingangsZeit, fehlendeAnforderungen, hilfeAnforderungen,
+  doc,
+  typeIdCounts,
+  selectedTypeCounts,
+  patienten,
+  gefangene,
+  einsatzName,
+  missionTypeId,
+  eingangsZeit,
+  fehlendeAnforderungen,
+  hilfeAnforderungen,
             `Nachladen (Versuch ${iframe._reloadAttempts}/${MAX_RELOADS})…`, // statusText
-            credits
+            credits,
+            missingTypeCounts
           );
           btn.click();
           waitForVehicleListUpdate(doc, () => injectLogic(iframe));
@@ -1592,16 +1650,18 @@ invisible.onload = () => {
           doc, typeIdCounts, selectedTypeCounts, patienten, gefangene, einsatzName,
           missionTypeId, eingangsZeit, fehlendeAnforderungen, hilfeAnforderungen,
           'Alle Anforderungen erfüllt – bereit zur Alarmierung!', // statusText
-          credits
-        );
+          credits,
+  missingTypeCounts
+);
         iframe._reloadAttempts = 0;
       } else if (iframe._reloadAttempts >= MAX_RELOADS) {
         renderInfoBox(
           doc, typeIdCounts, selectedTypeCounts, patienten, gefangene, einsatzName,
           missionTypeId, eingangsZeit, fehlendeAnforderungen, hilfeAnforderungen,
           '⚠️ Maximale Nachladeversuche erreicht, es fehlen noch Fahrzeuge!', // statusText
-          credits
-        );
+          credits,
+  missingTypeCounts
+);
         iframe._reloadAttempts = 0;
       }
     } catch (e) {
