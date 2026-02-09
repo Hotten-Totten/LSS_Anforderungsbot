@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.36
+Version: 0.0.15.37
 */
 
 (function () {
   'use strict';
 
   // ===== SOFORT exportieren =====
-  window.__ANFB_VERSION__ = '0.0.15.36';
+  window.__ANFB_VERSION__ = '0.0.15.37';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__);
 
@@ -29,7 +29,7 @@ Version: 0.0.15.36
 
 
   // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
-    console.clear();
+     console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -80,7 +80,7 @@ Version: 0.0.15.36
         66:  ["MZB", "Boot", "Boote"],
         67:  ["MZB", "Rettungsboot", "Boot", "Boote"],
         68:  ["MZB", "Boot", "Boote"],
-        69:  ["tauchkraftwagen", "gw-taucher"],
+        69:  ["tauchkraftwagen", "gw-taucher", "GW-Taucher"],
         70:  ["MZB", "Boot", "Boote"],
         72:  ["Wasserwerfer", "wasserwerfer"],
         74:  ["naw"],
@@ -378,6 +378,7 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
     const missingTypeCounts = {};
     let water = 0, people = 0;
 
+
     // --- RTW, NEF, RTH nur bei Erstanforderung aus Hilfeseite ---
     if (istHilfeSeite && actualPatients > 0) {
         typeIdCounts[28] = actualPatients;
@@ -493,18 +494,15 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
         if (!m) return;
         const cnt = +m[1];
         const label = m[2].toLowerCase().replace(/[\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
-
+        const labelNoSep = label.replace(/[\s\-]/g, '');
         let found = null;
 
-// --- Boote: egal welcher Typ, wir zählen auf Solltyp 66 und wählen später äquivalent aus ---
-if (/\bboot|boote\b/i.test(label)) {
-    typeIdCounts[66] = (typeIdCounts[66] || 0) + cnt;
-    console.log(`➕ Boot-Anforderung erkannt: +${cnt} (Solltyp 66; Auswahl über 66/70/68/67)`);
-    return;
-}
-
-
-
+        // --- Boote: egal welcher Typ, wir zählen auf Solltyp 66 und wählen später äquivalent aus ---
+        if (/\bboot|boote\b/i.test(label)) {
+            typeIdCounts[66] = (typeIdCounts[66] || 0) + cnt;
+            console.log(`➕ Boot-Anforderung erkannt: +${cnt} (Solltyp 66; Auswahl über 66/70/68/67)`);
+            return;
+        }
         // Spezielle Fallback-Sonderfälle (zuerst prüfen)
         if (label.includes('dienstgruppenleitung')) {
             found = 103;
@@ -558,6 +556,21 @@ if (/\bboot|boote\b/i.test(label)) {
             console.log(`🔍 Fallback: Fehlende Betreuungshelfer → ${need}x Typ 131 für ${minBH} Leute`);
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
+        }
+        // ✅ Taucher: nimm den ersten verfügbaren (63 vor 69)
+        if (labelNoSep.includes('taucher')) {
+            const has63 = avail.some(v => v.tid === 63);
+            const has69 = avail.some(v => v.tid === 69);
+
+            if (has63) {
+                found = 63;
+            } else if (has69) {
+                found = 69;
+            } else {
+                found = null;
+            }
+
+            console.log(`🔍 Taucher-Anforderung → genommen: ${found}`);
         }
 
         // Kein Sonderfall → Mapping inkl. "oder"-Logik
@@ -1887,7 +1900,6 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     savePos(c.x, c.y);
   });
 }
-  console.log('[ANFB] 🚀 Bot vollständig gestartet');
 
 })();
 
