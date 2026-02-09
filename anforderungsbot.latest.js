@@ -1173,7 +1173,7 @@ const detBox    = box.querySelector('#aao-details');
       if (btn) btn.click();
     });
   }
-/*
+
   // ── Auto/Schwelle ───────────────────────────────────────────
   const AUTO_KEY   = 'aao_auto_dispatch';
   const THRESH_KEY = 'aao_credit_threshold';
@@ -1212,7 +1212,7 @@ const detBox    = box.querySelector('#aao-details');
   minus.onclick = () => setThreshold(currentThreshold - 100);
   plus.onclick  = () => setThreshold(currentThreshold + 100);
   updateAutoBtn();
-*/
+
 const focusByCredits = () => {
   const creditsNum = parseInt(String(credits).replace(/\D/g, ''), 10) || 0;
 
