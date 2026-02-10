@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.38
+Version: 0.0.15.39
 */
 
 (function () {
   'use strict';
 
   // ===== SOFORT exportieren =====
-  window.__ANFB_VERSION__ = '0.0.15.38';
+  window.__ANFB_VERSION__ = '0.0.15.39';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__);
 
@@ -29,7 +29,7 @@ Version: 0.0.15.38
 
 
   // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
-    console.clear();
+       console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -127,6 +127,21 @@ Version: 0.0.15.38
         175: ["NEA50"],
 
     };
+
+    const vehicleTypeNormMap = {};
+    for (const [tid, names] of Object.entries(vehicleTypeNameVariants)) {
+        vehicleTypeNormMap[tid] = names.map(norm);
+    }
+
+
+    function norm(str) {
+        return String(str || '')
+            .toLowerCase()
+            .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue')
+            .replace(/ß/g,'ss')
+            .replace(/[^a-z0-9]/g, ''); // killt leerzeichen, bindestriche, klammern etc.
+    }
+
     // 🔽 Boote sauber matchen (alle verstehen "boot"/"boote"/"mzb")
     const _boatLabels = ["boot", "boote", "mzb", "mehrzweckboot", "rettungsboot", "schlauchboot"];
 
@@ -573,26 +588,35 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
             console.log(`🔍 Taucher-Anforderung → genommen: ${found}`);
         }
 
-        // Kein Sonderfall → Mapping inkl. "oder"-Logik
-        if (!found) {
-            if (label.includes(' oder ')) {
-                const alternativen = label.split(' oder ').map(s => s.trim());
-                for (let alt of alternativen) {
-                    for (const [tid, vars] of Object.entries(mapping)) {
-                        if (vars.some(v => alt.includes(v.toLowerCase()) || v.toLowerCase().includes(alt))) {
-                            found = +tid; break;
-                        }
-                    }
-                    if (found !== null) break;
-                }
-            } else {
-                for (const [tid, vars] of Object.entries(mapping)) {
-                    if (vars.some(v => label.includes(v.toLowerCase()) || v.toLowerCase().includes(label))) {
-                        found = +tid; break;
-                    }
-                }
-            }
+        // Kein Sonderfall → Mapping inkl. "oder"-Logik (robust normalisiert)
+if (!found) {
+  const nLabel = norm(label);
+
+  // "oder"-Fälle: jede Alternative einzeln matchen
+  if (label.includes(' oder ')) {
+    const alternativen = label.split(' oder ').map(s => s.trim());
+    outer: for (const alt of alternativen) {
+      const nAlt = norm(alt);
+      for (const [tid, vars] of Object.entries(vehicleTypeNormMap)) {
+        if (vars.some(v => nAlt.includes(v) || v.includes(nAlt))) {
+          found = +tid;
+          console.log(`🔍 Match (ODER): "${alt}" → Typ ${tid}`);
+          break outer;
         }
+      }
+    }
+  } else {
+    // normaler Fall
+    for (const [tid, vars] of Object.entries(vehicleTypeNormMap)) {
+      if (vars.some(v => nLabel.includes(v) || v.includes(nLabel))) {
+        found = +tid;
+        console.log(`🔍 Match: "${label}" → Typ ${tid}`);
+        break;
+      }
+    }
+  }
+}
+
 
         if (!found) {
             console.warn('⚠️ Kein Typ für', label);
@@ -1960,6 +1984,8 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     savePos(c.x, c.y);
   });
 }
+
+
 
 })();
 
