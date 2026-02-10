@@ -28,7 +28,7 @@ Version: 0.0.15.36
   console.log('[ANFB] ✅ Bot startet jetzt…');
 
 
-  console.clear();
+      console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -2008,4 +2008,44 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     startX = p.clientX; startY = p.clientY;
     baseX = parseInt(el.style.left || '0', 10);
     baseY = parseInt(el.style.top  || '0', 10);
-    ev.pr
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const p = ev.type.startsWith('touch') ? ev.touches[0] : ev;
+    const nx = baseX + (p.clientX - startX);
+    const ny = baseY + (p.clientY - startY);
+    const c = clamp(nx, ny);
+    el.style.left = c.x + 'px';
+    el.style.top  = c.y + 'px';
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    savePos(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
+  };
+
+  handle?.addEventListener('mousedown', onDown, true);
+  document.addEventListener('mousemove', onMove, true);
+  document.addEventListener('mouseup',   onUp,   true);
+  handle?.addEventListener('touchstart', onDown, { passive:false, capture:true });
+  document.addEventListener('touchmove', onMove, { passive:false, capture:true });
+  document.addEventListener('touchend',  onUp,   { passive:true,  capture:true });
+
+  // Doppelklick auf Handle → zurück in die Mitte
+  handle?.addEventListener('dblclick', (e) => { e.preventDefault(); center(); }, true);
+
+  // bei Fenster-Resize im Viewport halten
+  window.addEventListener('resize', () => {
+    const c = clamp(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
+    el.style.left = c.x + 'px';
+    el.style.top  = c.y + 'px';
+    savePos(c.x, c.y);
+  });
+}
+
+
+
+})();
+
