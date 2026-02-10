@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.39
+Version: 0.0.15.40
 */
 
 (function () {
   'use strict';
 
   // ===== SOFORT exportieren =====
-  window.__ANFB_VERSION__ = '0.0.15.39';
+  window.__ANFB_VERSION__ = '0.0.15.40';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__);
 
@@ -28,8 +28,7 @@ Version: 0.0.15.39
   console.log('[ANFB] ✅ Bot initialisiert');
 
 
-  // ===== HIER BEGINNT DEIN ALTER BOT-CODE (ohne extra (function(){...})()) =====
-       console.clear();
+  console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -52,7 +51,7 @@ Version: 0.0.15.39
         28:  ["RTW", "KTW", "KTW-B", "RTW oder KTW oder KTW-B"],
         29:  ["NEF"],
         30:  ["löschfahrzeug","rüstwagen", "feuerlöschpumpen z. b. lf"],
-        31:  ["RTH", "rth", "rettungshubschrauber"],
+        31: ["RTH", "rth", "rettungshubschrauber", "rth winde"],
         32:  ["FuStW", "funkstreifenwagen"],
         33:  ["GW-Höhenrettung", "gw-höhenrettung"],
         34:  ["elw 2"],
@@ -113,6 +112,7 @@ Version: 0.0.15.39
         146: ["Anh FüLa", "anh füla"],
         147: ["FmKW", "fmkw"],
         148: ["MTW-FGr K", "mtw fgr k"],
+        157: ["RTH Winde", "rth winde"],
         158: ["GW-Höhenrettung (Bergrettung)", "höhenrettung bergrettung"],
         159: ["Seenotrettungskreuzer"],
         160: ["Seenotrettungsboot"],
@@ -226,10 +226,17 @@ function getMissionColor(doc) {
         return [...table.querySelectorAll('tbody tr')]
             .map(r=>{
                 const [name,count] = r.querySelectorAll('td');
-                const label = name.textContent.trim();
-                const cnt = count.textContent.trim();
-                if (!label||/wahrscheinlichkeit|wenn vorhanden/i.test(label)) return null;
-                return `${cnt}x ${label}`;
+                let label = name.textContent.trim();
+            const cnt = count.textContent.trim();
+            if (!label) return null;
+
+            // "Wahrscheinlichkeit"-Zeilen bleiben raus, aber "wenn vorhanden" behalten wir als normale Anforderung
+            if (/wahrscheinlichkeit/i.test(label)) return null;
+
+            // "wenn vorhanden" nur aus dem Text entfernen (damit das Mapping greift)
+            label = label.replace(/\(?(wenn vorhanden)\)?/ig, '').trim();
+
+            return `${cnt}x ${label}`;
             }).filter(Boolean);
     }
 
@@ -426,9 +433,13 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
     // Fallback-Matrix (gleich-/höherwertige Ersatztypen)
     // NEA50-Gruppe: 110/111/112/175 dürfen sich gegenseitig ersetzen
     // ELW1-Gruppe: 3 darf durch 34 oder 129 ersetzt werden (Mischung erlaubt)
-       const fallbackVehicleTypes = {
+
+    const fallbackVehicleTypes = {
   // ELW1 → ELW2 / ELW2-Drohne
   3:   [34, 129],
+
+  // ✅ neu: GW-Wasserrettung darf durch GKW (39) ersetzt werden
+  64: [39],
 
   // NEA50-Gruppe
   110: [111, 175, 112],
@@ -443,6 +454,8 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
   126: [129, 127, 125, 128],
   128: [129, 127, 125, 126],
 
+  // ✅ neu: RTH kann durch RTH Winde ersetzt werden
+  31: [157],
         // ggf. weitere Fallbacks hier…
     };
 
@@ -556,14 +569,23 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
-        else if (label.replace(/[\s\-]/g, '').includes('gwwasserrettung')) {
-            const x = label.match(/(\d+)/); const minGW = x ? parseInt(x[1], 10) : cnt;
-            const need = Math.ceil(minGW / 6);
-            found = 64;
-            console.log(`🔍 Fallback: Fehlende GW-Wasserrettung Leute → ${need}x GW-Wasserrettung (Typ 64) für ${minGW} Leute`);
-            typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
-            return;
+        else if (label.includes('rettungshubschrauber') || label === 'rth') {
+            found = 157; // 🔑 Primär immer RTH Winde
+            console.log('🔍 RTH-Anforderung → Primär 157 (RTH Winde)');
         }
+        else if (label.replace(/[\s\-]/g, '').includes('gwwasserrettung')) {
+            const x = label.match(/(\d+)/);
+            const minGW = x ? parseInt(x[1], 10) : cnt;
+
+    // ✅ Bei DIR: 39 hat immer 9 Wasserrettungs-Personale
+        const need39 = Math.ceil(minGW / 9);
+
+    // Wir planen direkt 39 (weil es die Personal-Lösung ist)
+    typeIdCounts[39] = (typeIdCounts[39] || 0) + need39;
+
+    console.log(`🔍 Personal: GW-Wasserrettung → ${need39}× Typ 39 für ${minGW} Leute (9 pro 39)`);
+    return;
+}
         else if (label.includes('betreuungshelfer')) {
             const x = label.match(/(\d+)/); const minBH = x ? parseInt(x[1], 10) : cnt;
             const need = Math.ceil(minBH / 9);
@@ -572,25 +594,22 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
-        // ✅ Taucher: nimm den ersten verfügbaren (63 vor 69)
-        if (labelNoSep.includes('taucher')) {
-            const has63 = avail.some(v => v.tid === 63);
-            const has69 = avail.some(v => v.tid === 69);
+        // ✅ Taucher: nimm den ersten verfügbaren (63 vor 69) – robust normalisiert
+const nLabel = norm(label);
+if (!found && (nLabel.includes('taucher') || nLabel.includes('tauchkraftwagen') || nLabel.includes('gwtaucher'))) {
+  const has63 = avail.some(v => v.tid === 63);
+  const has69 = avail.some(v => v.tid === 69);
 
-            if (has63) {
-                found = 63;
-            } else if (has69) {
-                found = 69;
-            } else {
-                found = null;
-            }
+  if (has63) found = 63;
+  else if (has69) found = 69;
 
-            console.log(`🔍 Taucher-Anforderung → genommen: ${found}`);
-        }
+  console.log(`🔍 Taucher-Sonderfall → genommen: ${found} (63:${has63}, 69:${has69})`);
+}
 
         // Kein Sonderfall → Mapping inkl. "oder"-Logik (robust normalisiert)
 if (!found) {
-  const nLabel = norm(label);
+  // nLabel ist oben schon berechnet
+
 
   // "oder"-Fälle: jede Alternative einzeln matchen
   if (label.includes(' oder ')) {
@@ -662,10 +681,41 @@ if (!found) {
         console.log(`➕ Personal-Abgleich: ${need}x Typ 53 für ${dekonpeople} Dekon-P`);
     }
     if (wasserpeople > 0) {
-        const need = Math.ceil(wasserpeople / 6);
-        typeIdCounts[64] = Math.max(typeIdCounts[64] || 0, need);
-        console.log(`➕ Personal-Abgleich: ${need}x Typ 64 für ${wasserpeople} GW-Wasserrettung`);
+    let remaining = wasserpeople;
+
+    // verfügbare Fahrzeuge im Auswahlfenster zählen
+    let avail64 = avail.filter(v => v.tid === 64 && !v.cb.checked).length;
+    let avail39 = avail.filter(v => v.tid === 39 && !v.cb.checked).length;
+
+    let need64 = 0;
+    let need39 = 0;
+
+    // ✅ Priorität: erst 64 (6 Plätze), dann 39 (9 Plätze)
+    while (remaining > 0 && avail64 > 0) {
+        need64++;
+        avail64--;
+        remaining -= 6;
     }
+    while (remaining > 0 && avail39 > 0) {
+        need39++;
+        avail39--;
+        remaining -= 9;
+    }
+
+    // Wenn immer noch was fehlt, planen wir weiter (auch wenn nicht verfügbar),
+    // damit es im "Fehlende Fahrzeuge" sauber auftaucht.
+    if (remaining > 0) {
+        // hier macht 39 mehr Sinn pro Fahrzeug
+        const extra39 = Math.ceil(remaining / 9);
+        need39 += extra39;
+        remaining -= extra39 * 9;
+    }
+
+    if (need64 > 0) typeIdCounts[64] = (typeIdCounts[64] || 0) + need64;
+    if (need39 > 0) typeIdCounts[39] = (typeIdCounts[39] || 0) + need39;
+
+    console.log(`➕ Personal-Abgleich GW-Wasserrettung: Bedarf=${wasserpeople} → plane ${need64}×64 (6er) + ${need39}×39 (9er)`);
+}
     if (betreuerpeople > 0) {
         const need = Math.ceil(betreuerpeople / 9);
         typeIdCounts[131] = Math.max(typeIdCounts[131] || 0, need);
@@ -830,7 +880,17 @@ if (tid === 66) {
 
 
 
-
+// ✅ RTH-Prio: wenn 31 gefordert ist, nimm erst 157 (RTH Winde), dann 31
+if (tid === 31 && rem > 0) {
+  avail.forEach(v => {
+    if (rem > 0 && v.tid === 157 && !v.cb.checked) {
+      v.cb.checked = true;
+      selectedTypeCounts[31] = (selectedTypeCounts[31] || 0) + 1;
+      console.log('✅ RTH: nehme 157 (Winde) als Erfüllung für 31');
+      rem--;
+    }
+  });
+}
 
 
     // 1) exakte Matches
@@ -1948,44 +2008,4 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     startX = p.clientX; startY = p.clientY;
     baseX = parseInt(el.style.left || '0', 10);
     baseY = parseInt(el.style.top  || '0', 10);
-    ev.preventDefault();
-    ev.stopPropagation();
-  };
-  const onMove = (ev) => {
-    if (!dragging) return;
-    const p = ev.type.startsWith('touch') ? ev.touches[0] : ev;
-    const nx = baseX + (p.clientX - startX);
-    const ny = baseY + (p.clientY - startY);
-    const c = clamp(nx, ny);
-    el.style.left = c.x + 'px';
-    el.style.top  = c.y + 'px';
-  };
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    savePos(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
-  };
-
-  handle?.addEventListener('mousedown', onDown, true);
-  document.addEventListener('mousemove', onMove, true);
-  document.addEventListener('mouseup',   onUp,   true);
-  handle?.addEventListener('touchstart', onDown, { passive:false, capture:true });
-  document.addEventListener('touchmove', onMove, { passive:false, capture:true });
-  document.addEventListener('touchend',  onUp,   { passive:true,  capture:true });
-
-  // Doppelklick auf Handle → zurück in die Mitte
-  handle?.addEventListener('dblclick', (e) => { e.preventDefault(); center(); }, true);
-
-  // bei Fenster-Resize im Viewport halten
-  window.addEventListener('resize', () => {
-    const c = clamp(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
-    el.style.left = c.x + 'px';
-    el.style.top  = c.y + 'px';
-    savePos(c.x, c.y);
-  });
-}
-
-
-
-})();
-
+    ev.pr
