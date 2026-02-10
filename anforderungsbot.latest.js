@@ -28,7 +28,7 @@ Version: 0.0.15.40
   console.log('[ANFB] ✅ Bot startet jetzt…');
 
 
-      console.clear();
+    console.clear();
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -2048,4 +2048,3 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
 
 
 })();
-
