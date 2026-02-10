@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.41
+Version: 0.0.15.45
 */
 
 (function () {
   'use strict';
 
   // ===== VERSION SOFORT EXPORTIEREN =====
-  window.__ANFB_VERSION__ = '0.0.15.41';
+  window.__ANFB_VERSION__ = '0.0.15.45';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
@@ -25,8 +25,10 @@ Version: 0.0.15.41
   }
   window.__ANFB_LOADED__ = true;
 
-      console.clear();
-    const BOT_VERSION = '0.0.15.41';
+    console.clear();
+    const BOT_VERSION = '0.0.15.45';
+
+/// *** GLOBALS Anfang***
     window.__ANFB_VERSION__ = BOT_VERSION;
     let personnelReq = 0;
     let selectedTypeCounts = {};
@@ -35,7 +37,10 @@ Version: 0.0.15.41
     // ── Boot-Äquivalenzen (Prio-Reihenfolge)
     const BOAT_EQUIV = [68, 66, 67, 70];
 
+    // 🔴 Standard: nur rote Einsätze bearbeiten
+    window.AAO_PROCESS_ALL_COLORS = true;
 
+/// *** GLOBALS Ende***
 
     window._reloadAttempted = false;
     // 🔁 Mapping Fahrzeugtyp → Namevarianten (inkl. Alternativen)
@@ -50,7 +55,7 @@ Version: 0.0.15.41
         28:  ["RTW", "KTW", "KTW-B", "RTW oder KTW oder KTW-B"],
         29:  ["NEF"],
         30:  ["löschfahrzeug","rüstwagen", "feuerlöschpumpen z. b. lf"],
-        31: ["RTH", "rth", "rettungshubschrauber", "rth winde"],
+        31:  ["RTH", "rth", "rettungshubschrauber", "rth winde"],
         32:  ["FuStW", "funkstreifenwagen"],
         33:  ["GW-Höhenrettung", "gw-höhenrettung"],
         34:  ["elw 2"],
@@ -933,7 +938,7 @@ if (tid === 31 && rem > 0) {
 } // ← HIER endet selectVehiclesByRequirement korrekt
 
 
-
+  // ── Helpers ─────────────────────────────────────────────────
 function renderInfoBox(doc, typeIdCounts, selectedTypeCounts,
                       patienten, gefangene,
                       einsatzName, missionTypeId, eingangsZeit,
@@ -941,7 +946,71 @@ function renderInfoBox(doc, typeIdCounts, selectedTypeCounts,
                       statusText = '', credits = '', missingTypeCounts = {}) {
 
 
-  // ── Helpers ─────────────────────────────────────────────────
+function buildMissingTextOnly(missingTypeCounts, vehicleTypeNameVariants) {
+  const entries = Object.entries(missingTypeCounts || {}).filter(([,c]) => c > 0);
+  if (!entries.length) return 'Bitte um Amtshilfe! ';
+
+  const nameOf = (tid) =>
+    vehicleTypeNameVariants?.[tid]?.[0] || `Typ ${tid}`;
+
+  const list = entries
+    .sort((a,b)=> (+a[0])-(+b[0]))
+    .map(([tid,c]) => `${c}× ${nameOf(+tid)}`)
+    .join(', ');
+
+  return `Bitte Amtshilfe: \nFehlende Fahrzeuge: ${list}`;
+}
+
+
+// =====================
+// 🔧 Chat-Helfer (GLOBAL)
+// =====================
+async function fillAndTickOnly(doc, message, opts = { onlyIfEmpty: true }) {
+  const waitFor = (getter, timeout = 9000, step = 120) =>
+    new Promise((resolve) => {
+      const t0 = Date.now();
+      const iv = setInterval(() => {
+        const el = getter();
+        if (el) { clearInterval(iv); resolve(el); }
+        if (Date.now() - t0 > timeout) { clearInterval(iv); resolve(null); }
+      }, step);
+    });
+
+  const getField = () =>
+    doc?.querySelector?.('#mission_reply_content') ||
+    window.top?.document?.querySelector?.('#mission_reply_content') ||
+    null;
+
+  const getCb = () =>
+    doc?.querySelector?.('#mission_reply_alliance_chat') ||
+    window.top?.document?.querySelector?.('#mission_reply_alliance_chat') ||
+    null;
+
+  const field = await waitFor(getField, 9000);
+  const cb    = await waitFor(getCb,    9000);
+
+  if (!field || !cb) return false;
+
+  const cur = ('value' in field ? field.value : (field.textContent || '')).trim();
+
+  if (!opts.onlyIfEmpty || !cur) {
+    field.focus();
+    if ('value' in field) field.value = message;
+    else field.textContent = message;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  if (!cb.checked) {
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  return true;
+}
+
+
+
+
   const fmt = n => {
     if (!n && n !== 0) return 'k.A.';
     const s = String(n).replace(/\D/g, '');
@@ -1041,20 +1110,90 @@ async function fillAndSubmit(d = doc, message) {
 
   // nach Absenden automatisch „Alarmieren & weiter“ klicken (robust mit kurzem Polling)
 function clickAlarmAndNext(d = doc) {
-    const t0 = Date.now();
-    (function tryClick(){
-      const btn = d.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
-      if (btn) {
-        // kleine Pause vor dem Klicken
-        setTimeout(() => {
-          try { btn.click(); } catch {}
-        }, 600); // 600 ms warten
-        return;
-      }
-      if (Date.now() - t0 < 4000) setTimeout(tryClick, 150);
-    })();
+  // ✅ immer im aktuellen Missions-iframe klicken (da wo die Fahrzeugliste ist)
+  const getMissionDoc = () => {
+    const iframe = [...document.querySelectorAll('iframe.lightbox_iframe')]
+      .find(f => f.style.display !== 'none' && (f.src || '').includes('/missions/'));
+    return iframe?.contentDocument || iframe?.contentWindow?.document || d;
+  };
+
+  const t0 = Date.now();
+  (function tryClick() {
+    const md = getMissionDoc();
+
+    // bevorzugt Alarm & weiter, sonst Alarm + Verband
+    const btn =
+      md.querySelector('a.alert_next') ||
+      md.querySelector('a.alert_next_alliance') ||
+      window.top?.document?.querySelector('a.alert_next') ||
+      window.top?.document?.querySelector('a.alert_next_alliance');
+
+    if (btn) {
+      setTimeout(() => { try { btn.click(); } catch {} }, 250);
+      return;
+    }
+
+    if (Date.now() - t0 < 6000) setTimeout(tryClick, 150);
+    else console.warn('[AAO] Alarm-Button nicht gefunden (Timeout).');
+  })();
 }
   // ────────────────────────────────────────────────────────────
+
+    function getActiveMissionDoc() {
+  const iframe = [...document.querySelectorAll('iframe.lightbox_iframe')]
+    .find(f => f.style.display !== 'none' && (f.src || '').includes('/missions/'));
+  return iframe?.contentDocument || iframe?.contentWindow?.document || null;
+}
+
+function quick2xHLF_OrFallback_AndAlert() {
+  const d = getActiveMissionDoc();
+  if (!d) {
+    console.warn('[AAO] Kein aktiver Missions-IFrame gefunden.');
+    if (lblStatus) lblStatus.textContent = '⚠️ Kein Missionsfenster gefunden.';
+    return;
+  }
+
+  // 1) Alles demarkieren (per Klick, damit LSS es merkt)
+  const checked = [...d.querySelectorAll('input.vehicle_checkbox:checked')];
+  checked.forEach(cb => { try { cb.click(); } catch { cb.checked = false; } });
+
+  // 2) 2× wählen: 30 → 0 → 32 (per Klick)
+  const ORDER = [30, 0, 32];
+  let picked = 0;
+
+  for (const wantTid of ORDER) {
+    if (picked >= 2) break;
+
+    const rows = [...d.querySelectorAll('tr.vehicle_select_table_tr')];
+    for (const tr of rows) {
+      if (picked >= 2) break;
+
+      const cb = tr.querySelector('input.vehicle_checkbox');
+      if (!cb) continue;
+
+      const tid = +cb.getAttribute('vehicle_type_id');
+      if (tid === wantTid && !cb.checked) {
+        try { cb.click(); } catch { cb.checked = true; }
+        picked++;
+      }
+    }
+  }
+
+  if (lblStatus) lblStatus.textContent = `🚒 Quick: ${picked}/2× (30→0→32) gewählt…`;
+
+  // 3) Alarm & weiter
+  const btn = d.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
+  if (!btn) {
+    if (lblStatus) lblStatus.textContent = '⚠️ Alarm & weiter nicht gefunden.';
+    console.warn('[AAO] alert_next nicht gefunden');
+    return;
+  }
+
+  if (picked < 2) console.warn(`[AAO] Nur ${picked}/2 verfügbar – alarmiere trotzdem.`);
+
+  setTimeout(() => { try { btn.click(); } catch {} }, 150);
+}
+
 
   // Emoji
   const ids = Object.keys(typeIdCounts).map(Number);
@@ -1127,6 +1266,11 @@ box.innerHTML = `
     <button id="btn-alarm-alliance" style="${btnGreen}">🤝 ${emoji} ${kred} Alarm + Verband</button>
   </div>
 
+    <!-- Quick-Button -->
+  <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:6px;">
+    <button id="btn-quick-2xhlf" style="${btnBase}background:#5E5E5E;">2xHLF/LF/FuStW) + Alarm</button>
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:6px;">
     <button id="btn-chat-insert" style="${btnGreen}">💬 Freigeben + Chat-Text + Absenden</button>
   </div>
@@ -1152,6 +1296,74 @@ box.innerHTML = `
 
     <div id="aao-missing-list" style="display:none;margin-top:6px;"></div>
   </div>
+
+    <!-- ✅ Side-Rail rechts (aus-/einklappbar) -->
+<div id="aao-side-rail"
+     style="
+       position:absolute;
+       top:44px;
+       right:-2px;
+       display:flex;
+       flex-direction:row; /* 👉 klappt jetzt NACH RECHTS auf */
+       align-items:flex-start;
+       gap:6px;
+       z-index:99999;
+       pointer-events:auto;
+     ">
+
+  <!-- Toggle-Lasche -->
+  <button id="aao-side-toggle"
+          title="Tools ein-/ausklappen"
+          style="
+            border:0;
+            cursor:pointer;
+            user-select:none;
+            padding:8px 6px;
+            border-radius:8px;
+            background:#2b2b2b;
+            color:#fff;
+            font-size:11px;
+            box-shadow:0 2px 10px rgba(0,0,0,.35);
+            writing-mode:vertical-rl;
+            transform:rotate(180deg);
+            opacity:.9;
+          ">TOOLS</button>
+
+  <!-- Panel -->
+<div id="aao-side-panel"
+     style="
+       display:none;
+       position:absolute;
+       top:0;
+       left:100%;           /* 👉 außerhalb der GUI */
+       margin-left:6px;     /* kleiner Abstand */
+       min-width:160px;
+       padding:8px;
+       border-radius:10px;
+       background:#151515;
+       border:1px solid #2a2a2a;
+       box-shadow:0 3px 14px rgba(0,0,0,.45);
+       z-index:100000;
+     ">
+    <div style="font-weight:700;margin-bottom:6px;">🧰 Tools</div>
+
+    <div style="display:grid;gap:6px;">
+      <button id="btn-process-colors"
+      style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
+         background:#b71c1c;color:#fff;font-size:12px;cursor:pointer;">
+        🔴 Nur rote Einsätze
+      </button>
+
+     <button id="btn-quick-2x30"
+      style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
+      background:#3E1BD3;color:#fff;font-size:12px;cursor:pointer;">
+      1 x Verbandfreigabe - 2x Fehlende Fahrzeuge posten
+     </button>
+      <button id="btn-tool-3">🧪 Aktion 3</button>
+    </div>
+  </div>
+</div>
+
 `;
 
     makeDraggable(box, { handleSelector: '#aao-drag-handle', storageKey: 'aao_info_pos' });
@@ -1175,6 +1387,9 @@ const bNext     = box.querySelector('#btn-next');
 const bClose    = box.querySelector('#btn-close');
 const bDet      = box.querySelector('#aao-toggle-details');
 const detBox    = box.querySelector('#aao-details');
+const bQuick2x30 = box.querySelector('#btn-quick-2x30');
+
+
 
 // ✅ NEU: Missing-Liste befüllen (nur wenn was fehlt)
 // ✅ NEU: Missing-Button + Box
@@ -1184,6 +1399,135 @@ const missBox = box.querySelector('#aao-missing-list');
 // ✅ Missing-Liste befüllen (und automatisch aufklappen)
 const missingEntries = Object.entries(missingTypeCounts || {}).filter(([,c]) => c > 0);
 const typeName = (tid) => (vehicleTypeNameVariants?.[tid]?.[0] || ('Typ ' + tid));
+
+    // ✅ Side-Rail Toggle (persistiert)
+const sideToggle = box.querySelector('#aao-side-toggle');
+const sidePanel  = box.querySelector('#aao-side-panel');
+
+const SIDE_KEY = 'aao_side_open';
+let sideOpen = (localStorage.getItem(SIDE_KEY) === '1');
+
+const renderSide = () => {
+  if (!sidePanel || !sideToggle) return;
+  sidePanel.style.display = sideOpen ? 'block' : 'none';
+  sideToggle.style.opacity = sideOpen ? '1' : '.75';
+  sideToggle.textContent = sideOpen ? 'TOOLS' : 'TOOLS';
+};
+
+if (sideToggle && sidePanel) {
+  renderSide();
+  sideToggle.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sideOpen = !sideOpen;
+    localStorage.setItem(SIDE_KEY, sideOpen ? '1' : '0');
+    renderSide();
+  };
+}
+
+    const bQuick2xHLF = box.querySelector('#btn-quick-2xhlf');
+
+if (bQuick2xHLF) {
+  bQuick2xHLF.onclick = () => withLock(() => {
+    if (bQuick2xHLF.disabled) return;
+    if (lblStatus) lblStatus.textContent = '⏳ Quick: demarkieren → 2× (30→0→32) → Alarm…';
+    quick2xHLF_OrFallback_AndAlert(); // gleich unten
+  });
+}
+
+    // 🔘 Einsatzfarben-Schalter
+const bProcessColors = box.querySelector('#btn-process-colors');
+
+const updateProcessColorBtn = () => {
+  if (!bProcessColors) return;
+  if (window.AAO_PROCESS_ALL_COLORS) {
+    bProcessColors.textContent = '🟢 Alle Einsätze';
+    bProcessColors.style.background = '#2e7d32';
+  } else {
+    bProcessColors.textContent = '🔴 Nur rote Einsätze';
+    bProcessColors.style.background = '#b71c1c';
+  }
+};
+
+// Initial anzeigen
+updateProcessColorBtn();
+
+if (bProcessColors) {
+  bProcessColors.onclick = () => {
+    window.AAO_PROCESS_ALL_COLORS = !window.AAO_PROCESS_ALL_COLORS;
+    updateProcessColorBtn();
+    console.log('[AAO] Farben-Modus:', window.AAO_PROCESS_ALL_COLORS ? 'ALLE' : 'NUR ROT');
+  };
+}
+
+const t2 = box.querySelector('#btn-tool-2');
+const t3 = box.querySelector('#btn-tool-3');
+
+if (t2) t2.onclick = () => { if (lblStatus) lblStatus.textContent = '⚡ Tool 2 geklickt'; };
+
+// ✅ Tool 3 = Alarmieren & weiter (immer im aktiven Missions-IFrame)
+// ✅ Tool 3 = Chat absenden (wenn vorhanden) + Alarmieren & weiter
+if (t3) {
+  t3.textContent = '🚨 Chat + Alarm & weiter';
+  t3.onclick = () => withLock(async () => {
+    const d = getActiveMissionDoc?.() || doc;
+
+    if (lblStatus) lblStatus.textContent = '📨 Sende Chat (wenn vorhanden)…';
+
+    // 1) Chat absenden, wenn Feld da ist
+    const field =
+      d?.querySelector('#mission_reply_content') ||
+      window.top?.document?.querySelector('#mission_reply_content');
+
+    if (field) {
+      const form = field.closest('form');
+
+      // Button "Absenden" suchen
+      const submitBtn =
+        form?.querySelector('button[type="submit"], input[type="submit"]') ||
+        field.parentElement?.querySelector('.input-group-addon button[type="submit"]') ||
+        d?.querySelector('.input-group-addon button[type="submit"]') ||
+        window.top?.document?.querySelector('.input-group-addon button[type="submit"]');
+
+      // Nur absenden, wenn wirklich Text drinsteht
+      const txt = ('value' in field ? field.value : (field.textContent || '')).trim();
+      if (txt.length > 0) {
+        try {
+          if (submitBtn) submitBtn.click();
+          else if (form?.requestSubmit) form.requestSubmit();
+          else if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          if (lblStatus) lblStatus.textContent = '📨 Chat gesendet. 🚨 Alarmiere…';
+        } catch (e) {
+          console.warn('[AAO] Chat-Submit fehlgeschlagen:', e);
+          if (lblStatus) lblStatus.textContent = '⚠️ Chat-Submit fehlgeschlagen. 🚨 Alarmiere trotzdem…';
+        }
+
+        // kurze Luft zum Verarbeiten im UI
+        await new Promise(r => setTimeout(r, 250));
+      } else {
+        if (lblStatus) lblStatus.textContent = 'ℹ️ Chat leer – alarmiere ohne Chat…';
+      }
+    } else {
+      if (lblStatus) lblStatus.textContent = 'ℹ️ Kein Chatfeld – alarmiere…';
+    }
+
+    // 2) Alarm & weiter klicken
+    const btn = d?.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
+    if (!btn) {
+      if (lblStatus) lblStatus.textContent = '⚠️ Alarm & weiter nicht gefunden.';
+      console.warn('[AAO] alert_next nicht gefunden (Tool3)');
+      return;
+    }
+
+    try { btn.click(); } catch (e) { console.warn('[AAO] alert_next click failed', e); }
+  });
+}
+
+
+
+
+
+
 
 if (bMiss && missBox && missingEntries.length) {
   bMiss.style.display = 'inline-block';
@@ -1251,52 +1595,86 @@ if (bMiss && missBox) {
   const spin = () => { if (lblStatus) lblStatus.textContent = '⏳ Aktion läuft…'; };
 
   // ── EIN-KLICK: Freigeben → (Reload tolerant) → Text + Checkbox → Absenden → Alarm & weiter
-  if (bChat) {
-    bChat.onclick = async () => {
-      if (bChat.disabled) return;
-      bChat.disabled = true;
-      const mid = getMissionId(doc);
-      if (mid) sessionStorage.setItem('aao_share_pending', mid);
-      if (lblStatus) lblStatus.textContent = '⏳ Freigeben…';
+// ── EIN-KLICK: Freigeben (falls nötig) → Chat-Text + Haken setzen (OHNE Absenden)
+// ── EIN-KLICK (groß): Freigeben → Text+Chat-Haken → Absenden → Alarm & weiter
+if (bChat) {
+  bChat.onclick = async () => {
+    if (bChat.disabled) return;
+    bChat.disabled = true;
 
-      // 1) Freigeben
-      const shareBtn = doc.querySelector('#mission_alliance_share_btn');
-      try { shareBtn?.click(); } catch(e) {
-        try { if (shareBtn?.href) location.href = shareBtn.href; } catch {}
-      }
+    const mid = getMissionId(doc);
+    if (mid) sessionStorage.setItem('aao_share_pending', mid);
 
-      // 2) Sofort versuchen (falls kein Reload passiert)
-      const okNow = await fillAndSubmit(doc, buildMsg());
-      if (okNow) {
-        if (lblStatus) lblStatus.textContent = '📨 Nachricht gesendet. 🚨 Alarmiere…';
-        if (mid) sessionStorage.removeItem('aao_share_pending');
-        clickAlarmAndNext(doc);
+    if (lblStatus) lblStatus.textContent = '⏳ Freigeben + Chat vorbereiten…';
+
+    // 1) Freigeben klicken (wenn vorhanden)
+    const shareBtn = doc.querySelector('#mission_alliance_share_btn');
+    try { shareBtn?.click(); } catch {}
+
+    // 2) Polling: sobald Chatfeld da ist → Text setzen + Haken + Absenden
+    const start = Date.now();
+    const tick = async () => {
+      const pending = sessionStorage.getItem('aao_share_pending');
+      const thisId  = getMissionId(doc);
+
+      // wenn Mission gewechselt → abbrechen
+      if (!pending || !thisId || pending !== thisId) {
         bChat.disabled = false;
         return;
       }
 
-      // Wenn Reload passiert, übernimmt die Auto-Fortsetzung unten.
-      if (lblStatus) lblStatus.textContent = '⏳ Warte auf Eingabefeld…';
-      setTimeout(()=>{ bChat.disabled = false; }, 1200);
+      const ok = await fillAndSubmit(doc, buildMsg()); // ✅ setzt Text+Haken+SENDEN
+      if (ok) {
+        if (lblStatus) lblStatus.textContent = '📨 Gesendet – 🚨 Alarmiere…';
+        sessionStorage.removeItem('aao_share_pending');
+        clickAlarmAndNext(doc); // ✅ danach Alarm & weiter
+        bChat.disabled = false;
+        return;
+      }
+
+      // solange warten (für Reload/DOM-Lag)
+      if (Date.now() - start < 9000) {
+        if (lblStatus) lblStatus.textContent = '⏳ Warte auf Chatfeld…';
+        setTimeout(tick, 250);
+      } else {
+        if (lblStatus) lblStatus.textContent = '⚠️ Chatfeld nicht gefunden – nix gesendet.';
+        bChat.disabled = false;
+      }
     };
-  }
 
-  // ── Auto-Fortsetzung nach Freigabe/Reload
-  (async function continueIfPending() {
-    const pending = sessionStorage.getItem('aao_share_pending');
-    const thisId  = getMissionId(doc);
-    if (!pending || !thisId || pending !== thisId) return; // nichts zu tun
+    tick();
+  };
+}
 
-    if (lblStatus) lblStatus.textContent = '✍️ Setze Chat-Text…';
-    const ok = await fillAndSubmit(doc, buildMsg());
+
+// ── Auto-Fortsetzung nach Freigabe/Reload (OHNE Absenden)
+// ── Auto-Fortsetzung nach Freigabe/Reload (OHNE Absenden)
+// ── Auto-Fortsetzung nach Reload (falls Freigabe einen Reload triggert)
+(async function continueIfPending() {
+  const pending = sessionStorage.getItem('aao_share_pending');
+  const thisId  = getMissionId(doc);
+  if (!pending || !thisId || pending !== thisId) return;
+
+  if (lblStatus) lblStatus.textContent = '✍️ Setze Chat-Text…';
+
+  const start = Date.now();
+  const tick = async () => {
+    const ok = await fillAndSubmit(doc, buildMsg()); // ✅ setzt Text+Haken+SENDEN
     if (ok) {
-      if (lblStatus) lblStatus.textContent = '📨 Nachricht gesendet. 🚨 Alarmiere…';
+      if (lblStatus) lblStatus.textContent = '📨 Gesendet – 🚨 Alarmiere…';
       sessionStorage.removeItem('aao_share_pending');
       clickAlarmAndNext(doc);
-    } else {
-      if (lblStatus) lblStatus.textContent = '⚠️ Chat-Absenden fehlgeschlagen.';
+      return;
     }
-  })();
+    if (Date.now() - start < 9000) setTimeout(tick, 250);
+    else {
+      if (lblStatus) lblStatus.textContent = '⚠️ Chatfeld nicht gefunden – nix gesendet.';
+    }
+  };
+
+  tick();
+})();
+
 
   // ── Bestehende Buttons ──────────────────────────────────────
   if (bAlarm) {
@@ -1331,6 +1709,122 @@ if (bMiss && missBox) {
       if (btn) btn.click();
     });
   }
+
+async function quickAmtshilfeChat(d = doc, customText = null) {
+  const TEXT = customText || 'Bitte um Amtshilfe.';
+
+  const getField = () =>
+    d.querySelector('#mission_reply_content') ||
+    window.top?.document?.querySelector('#mission_reply_content');
+
+  const getCb = () =>
+    d.querySelector('#mission_reply_alliance_chat') ||
+    window.top?.document?.querySelector('#mission_reply_alliance_chat');
+
+  const setTextAndTick = () => {
+    const field = getField();
+    const cb = getCb();
+    if (!field || !cb) return false;
+
+    const cur = ('value' in field ? field.value : field.textContent || '').trim();
+    if (!cur) {
+      field.focus();
+      if ('value' in field) field.value = TEXT;
+      else field.textContent = TEXT;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    if (!cb.checked) {
+      cb.checked = true;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return true;
+  };
+
+  // 1️⃣ Wenn Chat schon da → direkt
+  if (setTextAndTick()) return;
+
+  // 2️⃣ Sonst erst freigeben
+  const shareBtn =
+    d.querySelector('#mission_alliance_share_btn') ||
+    window.top?.document?.querySelector('#mission_alliance_share_btn');
+
+  if (!shareBtn) return;
+
+  try { shareBtn.click(); } catch {}
+
+  // 3️⃣ Nach Freigabe erneut setzen
+  const t0 = Date.now();
+  const iv = setInterval(() => {
+    if (setTextAndTick() || Date.now() - t0 > 8000) {
+      clearInterval(iv);
+    }
+  }, 200);
+}
+
+
+
+
+
+
+
+/*
+function quick2x30AndAlert(d = doc) {
+  // 1) Alle Checkboxen demarkieren
+  const cbs = [...d.querySelectorAll('input.vehicle_checkbox')];
+  cbs.forEach(cb => { cb.checked = false; });
+
+  // 2) 2× Typ 30 anklicken
+  let picked = 0;
+  const rows = [...d.querySelectorAll('tr.vehicle_select_table_tr')];
+
+  for (const tr of rows) {
+    if (picked >= 2) break;
+    const cb = tr.querySelector('input.vehicle_checkbox');
+    if (!cb) continue;
+    const tid = +cb.getAttribute('vehicle_type_id');
+    if (tid === 30 && !cb.checked) {
+      cb.checked = true;
+      picked++;
+    }
+  }
+
+  if (lblStatus) lblStatus.textContent = `🚒 Quick: ${picked}/2× Typ 30 gewählt…`;
+
+  // 3) Alarm & weiter klicken
+  const btn = d.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
+  if (!btn) {
+    if (lblStatus) lblStatus.textContent = '⚠️ Alarm & weiter nicht gefunden.';
+    console.warn('[AAO] alert_next nicht gefunden');
+    return;
+  }
+
+  // Wenn weniger als 2 gefunden → trotzdem alarmieren (du wolltest „stattdessen 2×30“,
+  // aber wenn nicht genug da sind, kann er’s nicht zaubern)
+  if (picked < 2) console.warn(`[AAO] Nur ${picked}/2× Typ 30 verfügbar – alarmiere trotzdem.`);
+
+  setTimeout(() => {
+    try { btn.click(); } catch {}
+  }, 150);
+}
+*/
+if (bQuick2x30) {
+  bQuick2x30.onclick = () => withLock(() => {
+    if (lblStatus) lblStatus.textContent = '💬 Amtshilfe (fehlende Fahrzeuge)…';
+
+    const txt = buildMissingTextOnly(
+      missingTypeCounts,
+      vehicleTypeNameVariants
+    );
+
+    quickAmtshilfeChat(doc, txt);
+  });
+}
+
+
+
+
+
 /*
   // ── Auto/Schwelle ───────────────────────────────────────────
   const AUTO_KEY   = 'aao_auto_dispatch';
@@ -1495,26 +1989,29 @@ function injectLogic(iframe) {
         return;
     }
 
-    // GELB/GRÜN überspringen
-    if (color === 'gelb' || color === 'gruen') {
-        const nextBtn = doc.getElementById('mission_next_mission_btn') || doc.querySelector('#mission_next_mission_btn');
-        if (nextBtn) {
-            const isDisabled = nextBtn.classList.contains('btn-default') || nextBtn.getAttribute('href') === '#';
-            if (isDisabled) {
-                const closeBtn = doc.getElementById('lightbox_close_inside') || doc.querySelector('button.close, .close');
-                if (closeBtn) {
-                    console.log(`🟡🟢 Letzter ${color}-Einsatz erkannt – schließe das Fenster.`);
-                    closeBtn.click();
-                } else {
-                    console.warn('Schließen-Button nicht gefunden!');
-                }
-            } else {
-                console.log(`🟡🟢 Einsatz ist ${color} – klicke auf "Nächster Einsatz"-Button.`);
-                nextBtn.click();
-            }
-            return;
-        }
+// 🟥🟨🟩 Farb-Filter
+if (!window.AAO_PROCESS_ALL_COLORS && (color === 'gelb' || color === 'gruen')) {
+  const nextBtn = doc.getElementById('mission_next_mission_btn')
+               || doc.querySelector('#mission_next_mission_btn');
+
+  if (nextBtn) {
+    const isDisabled =
+      nextBtn.classList.contains('btn-default') ||
+      nextBtn.getAttribute('href') === '#';
+
+    if (isDisabled) {
+      const closeBtn =
+        doc.getElementById('lightbox_close_inside') ||
+        doc.querySelector('button.close, .close');
+      closeBtn?.click();
+    } else {
+      nextBtn.click();
     }
+  }
+
+  console.log(`⏭️ Einsatz ${color} übersprungen (Nur-Rot-Modus)`);
+  return;
+}
 
     // EasterEgg-Collector: falls ein Sammelobjekt angezeigt wird, automatisch einsammeln
 (function autoCollectEasterEgg() {
@@ -2084,4 +2581,3 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
 
 
 })();
-
