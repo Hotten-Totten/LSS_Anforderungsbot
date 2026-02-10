@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.40
+Version: 0.0.15.41
 */
 
 (function () {
   'use strict';
 
   // ===== VERSION SOFORT EXPORTIEREN =====
-  window.__ANFB_VERSION__ = '0.0.15.40';
+  window.__ANFB_VERSION__ = '0.0.15.41';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
@@ -25,10 +25,9 @@ Version: 0.0.15.40
   }
   window.__ANFB_LOADED__ = true;
 
-  console.log('[ANFB] ✅ Bot startet jetzt…');
-
-
-    console.clear();
+      console.clear();
+    const BOT_VERSION = '0.0.15.41';
+    window.__ANFB_VERSION__ = BOT_VERSION;
     let personnelReq = 0;
     let selectedTypeCounts = {};
     window._reloadAttempts = 0;
@@ -390,6 +389,12 @@ function renderNachalarmInfo(doc, summed, alarmed, ended = false, autoFired = fa
       <pre style="margin:0;white-space:pre-wrap">${rows}</pre>
       <div style="margin-top:6px;opacity:.85">${status}</div>
     `;
+// ✅ Draggable (PC + Tablet) – nur 1x initialisieren
+if (!box.dataset.dragInit) {
+  box.dataset.dragInit = '1';
+  makeDraggable(box, { handleSelector: '#aao-drag-handle', storageKey: 'aao_info_pos' });
+}
+
 }
 
     // ▪ Haupt-AAO: Fahrzeuge auswählen
@@ -1086,6 +1091,16 @@ const makeList = (arr) => !arr?.length
   : '<ul style="margin:4px 0 0 16px;padding:0;">' + arr.map(e=>`<li>${e}</li>`).join('') + '</ul>';
 
 box.innerHTML = `
+<div id="aao-drag-handle"
+     style="cursor:move;user-select:none;-webkit-user-select:none;
+            padding:4px 8px;margin:-8px -10px 8px -10px;
+            border-bottom:1px solid #2a2a2a;background:#151515;
+            border-radius:10px 10px 0 0;
+            display:flex;justify-content:space-between;align-items:center;">
+  <span style="opacity:.9">↕ ziehen</span>
+  <span style="opacity:.65;font-size:11px;">AAO-Helper v${BOT_VERSION}</span>
+</div>
+
   <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
     <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;">
       ${emoji} ${einsatzName}(${missionTypeId})
@@ -1100,7 +1115,6 @@ box.innerHTML = `
     <span style="${chip}">👮‍♂️ ${gefangene||0}</span>
   </div>
 
-  <!-- Steuerungs-Row -->
   <div id="aao-ctrl-row" style="margin-top:6px;display:flex;gap:6px;align-items:center;justify-content:space-between;">
     <div style="display:flex;align-items:center;gap:4px;">
       <label style="font-weight:bold;">Nachladeversuche:</label>
@@ -1108,21 +1122,18 @@ box.innerHTML = `
     </div>
   </div>
 
-  <!-- Erst die zwei grünen Alarm-Buttons -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
     <button id="btn-alarm"          style="${btnGreen}">🚨 ${emoji} ${kred} Alarm & weiter</button>
     <button id="btn-alarm-alliance" style="${btnGreen}">🤝 ${emoji} ${kred} Alarm + Verband</button>
   </div>
 
-  <!-- Chat-Freigabe -->
   <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:6px;">
     <button id="btn-chat-insert" style="${btnGreen}">💬 Freigeben + Chat-Text + Absenden</button>
   </div>
 
-  <!-- Weiter / Schließen -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
-    <button id="btn-next"           style="${btnBlue}">➡️ Weiter</button>
-    <button id="btn-close"          style="${btnRed}">❌ Schließen</button>
+    <button id="btn-next"  style="${btnBlue}">➡️ Weiter</button>
+    <button id="btn-close" style="${btnRed}">❌ Schließen</button>
   </div>
 
   <div style="margin:6px 0 4px 0;border-top:1px solid #2a2a2a"></div>
@@ -1142,6 +1153,8 @@ box.innerHTML = `
     <div id="aao-missing-list" style="display:none;margin-top:6px;"></div>
   </div>
 `;
+
+    makeDraggable(box, { handleSelector: '#aao-drag-handle', storageKey: 'aao_info_pos' });
 
 // Event für das Input-Feld
 box.querySelector('#maxReloadsInput').addEventListener('change', (e) => {
@@ -1946,45 +1959,48 @@ function handleKHAndStatus5(khIframe, onDone) {
         if (typeof onDone === 'function') setTimeout(onDone, 500);
     }, 700);
 }
-// === Gemeinsamer Helper: Element zentrieren + draggable machen ===
+// === Draggable (PC + Tablet) – iframe-sicher ===
 function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
   if (!el) return;
+
+  const doc = el.ownerDocument;                 // ✅ richtiges Document (iframe!)
+  const win = doc.defaultView || window;
 
   el.style.position = 'fixed';
   el.style.zIndex = '99998';
 
   const loadPos = () => {
     if (!storageKey) return null;
-    try { return JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch { return null; }
+    try { return JSON.parse(win.localStorage.getItem(storageKey) || 'null'); } catch { return null; }
   };
   const savePos = (x, y) => {
     if (!storageKey) return;
-    try { localStorage.setItem(storageKey, JSON.stringify({ x, y })); } catch {}
+    try { win.localStorage.setItem(storageKey, JSON.stringify({ x, y })); } catch {}
   };
+
   const clamp = (x, y) => {
     const w = el.offsetWidth || 300;
     const h = el.offsetHeight || 120;
-    const maxX = window.innerWidth  - w;
-    const maxY = window.innerHeight - h;
-    return { x: Math.min(Math.max(0, x), Math.max(0, maxX)), y: Math.min(Math.max(0, y), Math.max(0, maxY)) };
+    const maxX = win.innerWidth  - w;
+    const maxY = win.innerHeight - h;
+    return {
+      x: Math.min(Math.max(0, x), Math.max(0, maxX)),
+      y: Math.min(Math.max(0, y), Math.max(0, maxY))
+    };
   };
+
   const center = () => {
-    // kurz sichtbar messen
-    const prevVis = el.style.visibility;
-    el.style.visibility = 'hidden';
-    document.body.appendChild(el);
-    const w = el.offsetWidth  || 300;
+    const w = el.offsetWidth || 300;
     const h = el.offsetHeight || 120;
-    const x = Math.round((window.innerWidth  - w) / 2);
-    const y = Math.round((window.innerHeight - h) / 2);
+    const x = Math.round((win.innerWidth  - w) / 2);
+    const y = Math.round((win.innerHeight - h) / 2);
     const c = clamp(x, y);
     el.style.left = c.x + 'px';
     el.style.top  = c.y + 'px';
-    el.style.visibility = prevVis || '';
     savePos(c.x, c.y);
   };
 
-  // initiale Position: gespeicherte Werte oder zentrieren
+  // initial pos
   const pos = loadPos();
   if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
     const c = clamp(pos.x, pos.y);
@@ -1994,57 +2010,78 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     center();
   }
 
-  // Drag-Logik
-  let dragging = false, startX = 0, startY = 0, baseX = 0, baseY = 0;
+  // handle
   const handle = handleSelector ? el.querySelector(handleSelector) : el;
+  if (!handle) return;
+
+  // ✅ wichtig für Touch: sonst scrollt der Browser statt zu ziehen
+  handle.style.touchAction = 'none';
+
+  let dragging = false, startX = 0, startY = 0, baseX = 0, baseY = 0;
 
   const onDown = (ev) => {
-    // nur linke Maustaste / Touch
-    const isTouch = ev.type.startsWith('touch');
-    const btnOk = isTouch || (ev.button === 0);
-    if (!btnOk) return;
+    // nur primary pointer
+    if (ev.isPrimary === false) return;
+
     dragging = true;
-    const p = isTouch ? ev.touches[0] : ev;
-    startX = p.clientX; startY = p.clientY;
+    startX = ev.clientX;
+    startY = ev.clientY;
     baseX = parseInt(el.style.left || '0', 10);
     baseY = parseInt(el.style.top  || '0', 10);
+
+    try { handle.setPointerCapture(ev.pointerId); } catch {}
     ev.preventDefault();
     ev.stopPropagation();
   };
+
   const onMove = (ev) => {
     if (!dragging) return;
-    const p = ev.type.startsWith('touch') ? ev.touches[0] : ev;
-    const nx = baseX + (p.clientX - startX);
-    const ny = baseY + (p.clientY - startY);
+    const nx = baseX + (ev.clientX - startX);
+    const ny = baseY + (ev.clientY - startY);
     const c = clamp(nx, ny);
     el.style.left = c.x + 'px';
     el.style.top  = c.y + 'px';
   };
-  const onUp = () => {
+
+  const onUp = (ev) => {
     if (!dragging) return;
     dragging = false;
-    savePos(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
+    savePos(parseInt(el.style.left || '0', 10), parseInt(el.style.top || '0', 10));
+    try { handle.releasePointerCapture(ev.pointerId); } catch {}
   };
 
-  handle?.addEventListener('mousedown', onDown, true);
-  document.addEventListener('mousemove', onMove, true);
-  document.addEventListener('mouseup',   onUp,   true);
-  handle?.addEventListener('touchstart', onDown, { passive:false, capture:true });
-  document.addEventListener('touchmove', onMove, { passive:false, capture:true });
-  document.addEventListener('touchend',  onUp,   { passive:true,  capture:true });
+  // vorherige Listener entfernen (falls renderInfoBox oft neu baut)
+  if (el._dragCleanup) el._dragCleanup();
 
-  // Doppelklick auf Handle → zurück in die Mitte
-  handle?.addEventListener('dblclick', (e) => { e.preventDefault(); center(); }, true);
+  handle.addEventListener('pointerdown', onDown, true);
+  doc.addEventListener('pointermove', onMove, true);
+  doc.addEventListener('pointerup',   onUp,   true);
 
-  // bei Fenster-Resize im Viewport halten
-  window.addEventListener('resize', () => {
-    const c = clamp(parseInt(el.style.left||'0',10), parseInt(el.style.top||'0',10));
+  const onDbl = (e) => { e.preventDefault(); center(); };
+  handle.addEventListener('dblclick', onDbl, true);
+
+  const onResize = () => {
+    const c = clamp(parseInt(el.style.left || '0', 10), parseInt(el.style.top || '0', 10));
     el.style.left = c.x + 'px';
     el.style.top  = c.y + 'px';
     savePos(c.x, c.y);
-  });
+  };
+  win.addEventListener('resize', onResize);
+
+  // cleanup merken
+  el._dragCleanup = () => {
+    handle.removeEventListener('pointerdown', onDown, true);
+    doc.removeEventListener('pointermove', onMove, true);
+    doc.removeEventListener('pointerup', onUp, true);
+    handle.removeEventListener('dblclick', onDbl, true);
+    win.removeEventListener('resize', onResize);
+    el._dragCleanup = null;
+  };
 }
 
 
 
+
+
 })();
+
