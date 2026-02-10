@@ -1,31 +1,31 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.40
+Version: 0.0.15.36
 */
 
 (function () {
   'use strict';
 
-  // ===== SOFORT exportieren =====
-  window.__ANFB_VERSION__ = '0.0.15.40';
+  // ===== VERSION SOFORT EXPORTIEREN =====
+  window.__ANFB_VERSION__ = '0.0.15.36';
 
-  console.log('[ANFB] LIVE', window.__ANFB_VERSION__);
+  console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
-  // ===== Loader-Check =====
+  // ===== Loader-Key Check =====
   const EXPECT_KEY = 'ANFB-9f3c2d4a1b7e49d8a6c1f0b2c4d6e8aa';
   if (window.__ANFB_LOADER_KEY__ !== EXPECT_KEY) {
-    console.warn('[ANFB] falscher Loader – Abbruch');
+    console.warn('[ANFB] Bitte den offiziellen Loader nutzen. Direktstart blockiert.');
     return;
   }
 
   // ===== Doppelstart verhindern =====
   if (window.__ANFB_LOADED__) {
-    console.warn('[ANFB] Doppelstart verhindert');
+    console.warn('[ANFB] bereits geladen – stoppe Doppelstart');
     return;
   }
   window.__ANFB_LOADED__ = true;
 
-  console.log('[ANFB] ✅ Bot initialisiert');
+  console.log('[ANFB] ✅ Bot startet jetzt…');
 
 
   console.clear();
