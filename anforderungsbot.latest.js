@@ -448,6 +448,9 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
   // ELW1 → ELW2 / ELW2-Drohne
   3:   [34, 129],
 
+   // Schlauchwagen / GW-L2 Wasser
+  11: [30, 0], // HLF/LF dürfen Typ 11 erfüllen     
+
   // ✅ neu: GW-Wasserrettung darf durch GKW (39) ersetzt werden
   64: [39],
 
