@@ -893,11 +893,17 @@ if (tid === 66) {
 
 
 
+// Helper: sicher auswählen (LSS mag "click" lieber als checked=true)
+const pick = (v) => {
+  try { v.cb.click(); }
+  catch { v.cb.checked = true; }
+};
+
 // ✅ RTH-Prio: wenn 31 gefordert ist, nimm erst 157 (RTH Winde), dann 31
 if (tid === 31 && rem > 0) {
   avail.forEach(v => {
     if (rem > 0 && v.tid === 157 && !v.cb.checked) {
-      v.cb.checked = true;
+      pick(v);
       selectedTypeCounts[31] = (selectedTypeCounts[31] || 0) + 1;
       console.log('✅ RTH: nehme 157 (Winde) als Erfüllung für 31');
       rem--;
@@ -905,29 +911,48 @@ if (tid === 31 && rem > 0) {
   });
 }
 
+// ✅ Fix für Typ 11 (Schlauchwagen / GW-L2 Wasser oder SW)
+// Reihenfolge: erst echte 11, dann Ersatz. Passe die Liste an, wenn du andere willst.
+const SW_EQUIV = [11, 30, 0, 32]; // Beispiel: 11 -> HLF/LF -> FuStW (nur wenn du das wirklich willst)
 
-    // 1) exakte Matches
+if (tid === 11 && rem > 0) {
+  for (const want of SW_EQUIV) {
     avail.forEach(v => {
-        if (v.tid === tid && rem > 0) {
-            v.cb.checked = true;
-            selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
-            rem--;
-        }
+      if (rem > 0 && v.tid === want && !v.cb.checked) {
+        pick(v);
+        // wichtig: wir zählen auf Solltyp 11 hoch, egal was wir genommen haben
+        selectedTypeCounts[11] = (selectedTypeCounts[11] || 0) + 1;
+        console.log(`✅ Typ 11 erfüllt durch Typ ${want}`);
+        rem--;
+      }
     });
-
-    // 2) Fallbacks solange Bedarf besteht (Mischung erlaubt)
-    if (rem > 0 && fallbackVehicleTypes[tid]) {
-        fallbackVehicleTypes[tid].forEach(fb => {
-            avail.forEach(v => {
-                if (v.tid === fb && rem > 0) {
-                    v.cb.checked = true;
-                    selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
-                    console.log(`🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid}`);
-                    rem--;
-                }
-            });
-        });
+    if (rem <= 0) break;
+  }
+} else {
+  // 1) exakte Matches
+  avail.forEach(v => {
+    if (v.tid === tid && rem > 0 && !v.cb.checked) {
+      pick(v);
+      selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
+      rem--;
     }
+  });
+
+  // 2) Fallbacks solange Bedarf besteht (Mischung erlaubt)
+  if (rem > 0 && fallbackVehicleTypes[tid]) {
+    fallbackVehicleTypes[tid].forEach(fb => {
+      avail.forEach(v => {
+        if (v.tid === fb && rem > 0 && !v.cb.checked) {
+          pick(v);
+          selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
+          console.log(`🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid}`);
+          rem--;
+        }
+      });
+    });
+  }
+}
+
 
     // 3) Fehlstände loggen
     if (rem > 0) {
