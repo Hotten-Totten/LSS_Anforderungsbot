@@ -41,8 +41,7 @@ Version: 0.0.15.45
     window.AAO_PROCESS_ALL_COLORS = true;
 
 /// *** GLOBALS Ende***
-
-    window._reloadAttempted = false;
+window._reloadAttempted = false;
     // 🔁 Mapping Fahrzeugtyp → Namevarianten (inkl. Alternativen)
     const vehicleTypeNameVariants = {
         2:   ["DLK 23", "DLK", "Drehleitern"],
@@ -449,7 +448,7 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
   3:   [34, 129],
 
    // Schlauchwagen / GW-L2 Wasser
-//  11: [30, 0], // HLF/LF dürfen Typ 11 erfüllen     
+//  11: [30, 0], // HLF/LF dürfen Typ 11 erfüllen
 
   // ✅ neu: GW-Wasserrettung darf durch GKW (39) ersetzt werden
   64: [39],
@@ -911,39 +910,32 @@ if (tid === 31 && rem > 0) {
   });
 }
 
-// ✅ Fix für Typ 11 (Schlauchwagen / GW-L2 Wasser oder SW)
-// Reihenfolge: erst echte 11, dann Ersatz. Passe die Liste an, wenn du andere willst.
-const SW_EQUIV = [11, 30, 0, 32]; // Beispiel: 11 -> HLF/LF -> FuStW (nur wenn du das wirklich willst)
-
+// ✅ Typ 11: NUR echter Typ 11, immer per Klick, KEIN Ersatz
 if (tid === 11 && rem > 0) {
-  for (const want of SW_EQUIV) {
-    avail.forEach(v => {
-      if (rem > 0 && v.tid === want && !v.cb.checked) {
-        pick(v);
-        // wichtig: wir zählen auf Solltyp 11 hoch, egal was wir genommen haben
-        selectedTypeCounts[11] = (selectedTypeCounts[11] || 0) + 1;
-        console.log(`✅ Typ 11 erfüllt durch Typ ${want}`);
-        rem--;
-      }
-    });
-    if (rem <= 0) break;
-  }
+  avail.forEach(v => {
+    if (rem > 0 && v.tid === 11 && !v.cb.checked) {
+      try { v.cb.click(); } catch { v.cb.checked = true; }
+      selectedTypeCounts[11] = (selectedTypeCounts[11] || 0) + 1;
+      rem--;
+    }
+  });
 } else {
-  // 1) exakte Matches
+
+  // 1) exakte Matches (alle anderen Typen)
   avail.forEach(v => {
     if (v.tid === tid && rem > 0 && !v.cb.checked) {
-      pick(v);
+      v.cb.checked = true;
       selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
       rem--;
     }
   });
 
-  // 2) Fallbacks solange Bedarf besteht (Mischung erlaubt)
+  // 2) Fallbacks solange Bedarf besteht
   if (rem > 0 && fallbackVehicleTypes[tid]) {
     fallbackVehicleTypes[tid].forEach(fb => {
       avail.forEach(v => {
         if (v.tid === fb && rem > 0 && !v.cb.checked) {
-          pick(v);
+          v.cb.checked = true;
           selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
           console.log(`🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid}`);
           rem--;
@@ -953,12 +945,11 @@ if (tid === 11 && rem > 0) {
   }
 }
 
-
-    // 3) Fehlstände loggen
-    if (rem > 0) {
-        missingTypeCounts[tid] = rem;
-        console.warn(`⚠️ Für Typ ${tid} fehlen noch ${rem}`);
-    }
+// 3) Fehlstände loggen (für ALLE, auch Typ 11)
+if (rem > 0) {
+  missingTypeCounts[tid] = rem;
+  console.warn(`⚠️ Für Typ ${tid} fehlen noch ${rem}`);
+}
 });
 
 
@@ -2603,9 +2594,5 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     el._dragCleanup = null;
   };
 }
-
-
-
-
 
 })();
