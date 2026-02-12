@@ -927,15 +927,26 @@ if (tid === 31 && rem > 0) {
   });
 }
 
-// ✅ Typ 11: NUR echter Typ 11, immer per Klick, KEIN Ersatz
+    // ✅ Typ 11: NUR echter Typ 11 – direkt über Checkboxen suchen (robust gegen Tabs/Lazy-List)
 if (tid === 11 && rem > 0) {
-  avail.forEach(v => {
-    if (rem > 0 && v.tid === 11 && !v.cb.checked) {
-      pick(v);   // 👈 NEU
+  const cbs11 = [...doc.querySelectorAll('input.vehicle_checkbox')]
+    .filter(cb =>
+      +cb.getAttribute('vehicle_type_id') === 11 &&
+      !cb.checked &&
+      !cb.disabled
+    );
+
+  for (const cb of cbs11) {
+    if (rem <= 0) break;
+
+    try { cb.click(); } catch { cb.checked = true; }
+
+    // nur zählen, wenn es wirklich angehakt ist
+    if (cb.checked) {
       selectedTypeCounts[11] = (selectedTypeCounts[11] || 0) + 1;
       rem--;
     }
-  });
+  }
 } else {
 
 // 1) exakte Matches (immer per Klick)
