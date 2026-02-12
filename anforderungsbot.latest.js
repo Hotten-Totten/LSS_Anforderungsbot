@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.45
+Version: 0.0.15.47
 */
 
 (function () {
   'use strict';
 
   // ===== VERSION SOFORT EXPORTIEREN =====
-  window.__ANFB_VERSION__ = '0.0.15.45';
+  window.__ANFB_VERSION__ = '0.0.15.47';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
@@ -25,8 +25,11 @@ Version: 0.0.15.45
   }
   window.__ANFB_LOADED__ = true;
 
-    console.clear();
-    const BOT_VERSION = '0.0.15.45';
+    /*
+##### Ab hier der Scriptcode #####
+  */
+     console.clear();
+    const BOT_VERSION = '0.0.15.47';
 
 /// *** GLOBALS Anfang***
     window.__ANFB_VERSION__ = BOT_VERSION;
@@ -41,7 +44,8 @@ Version: 0.0.15.45
     window.AAO_PROCESS_ALL_COLORS = true;
 
 /// *** GLOBALS Ende***
-window._reloadAttempted = false;
+
+    window._reloadAttempted = false;
     // 🔁 Mapping Fahrzeugtyp → Namevarianten (inkl. Alternativen)
     const vehicleTypeNameVariants = {
         2:   ["DLK 23", "DLK", "Drehleitern"],
@@ -275,7 +279,7 @@ function handlePatientNachalarm(doc, attempt = 0, persist = { summed: null, alar
             const cb = tr.querySelector('input.vehicle_checkbox');
             const id = +cb?.getAttribute('vehicle_type_id');
             if (id === tid && !cb.checked) {
-                cb.checked = true;
+                try { cb.click(); } catch { cb.checked = true; }
                 want--;
                 persist.alarmiert[nm] = (persist.alarmiert[nm] || 0) + 1;
             }
@@ -519,7 +523,8 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
     const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
     if (doc) {
         const allCheckboxes = doc.querySelectorAll('input.vehicle_checkbox');
-        allCheckboxes.forEach(cb => { cb.checked = false; });
+        allCheckboxes.forEach(cb => { if (cb.checked) unpick(cb); });
+
     }
 
     const rows = [...doc.querySelectorAll('tr.vehicle_select_table_tr')];
@@ -874,7 +879,7 @@ if (tid === 66) {
 
     for (const v of boatsAvail) {
         if (rem <= 0) break;
-        v.cb.checked = true;
+        pick(v);
         // auf Solltyp 66 hochzählen (egal welcher Boot-Typ gewählt wurde)
         selectedTypeCounts[66] = (selectedTypeCounts[66] || 0) + 1;
         rem--;
@@ -892,12 +897,6 @@ if (tid === 66) {
 
 
 
-// Helper: sicher auswählen (LSS mag "click" lieber als checked=true)
-const pick = (v) => {
-  try { v.cb.click(); }
-  catch { v.cb.checked = true; }
-};
-
 // ✅ RTH-Prio: wenn 31 gefordert ist, nimm erst 157 (RTH Winde), dann 31
 if (tid === 31 && rem > 0) {
   avail.forEach(v => {
@@ -914,35 +913,37 @@ if (tid === 31 && rem > 0) {
 if (tid === 11 && rem > 0) {
   avail.forEach(v => {
     if (rem > 0 && v.tid === 11 && !v.cb.checked) {
-      try { v.cb.click(); } catch { v.cb.checked = true; }
+      pick(v);   // 👈 NEU
       selectedTypeCounts[11] = (selectedTypeCounts[11] || 0) + 1;
       rem--;
     }
   });
 } else {
 
-  // 1) exakte Matches (alle anderen Typen)
-  avail.forEach(v => {
-    if (v.tid === tid && rem > 0 && !v.cb.checked) {
-      v.cb.checked = true;
+// 1) exakte Matches (immer per Klick)
+avail.forEach(v => {
+  if (rem > 0 && v.tid === tid && !v.cb.checked) {
+    if (pick(v)) {
       selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
       rem--;
     }
-  });
+  }
+});
 
-  // 2) Fallbacks solange Bedarf besteht
-  if (rem > 0 && fallbackVehicleTypes[tid]) {
-    fallbackVehicleTypes[tid].forEach(fb => {
-      avail.forEach(v => {
-        if (v.tid === fb && rem > 0 && !v.cb.checked) {
-          v.cb.checked = true;
+// 2) Fallbacks solange Bedarf besteht (Mischung erlaubt) – immer per Klick
+if (rem > 0 && fallbackVehicleTypes[tid]) {
+  fallbackVehicleTypes[tid].forEach(fb => {
+    avail.forEach(v => {
+      if (rem > 0 && v.tid === fb && !v.cb.checked) {
+        if (pick(v)) {
           selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
           console.log(`🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid}`);
           rem--;
         }
-      });
+      }
     });
-  }
+  });
+}
 }
 
 // 3) Fehlstände loggen (für ALLE, auch Typ 11)
@@ -1577,8 +1578,16 @@ if (bMiss && missBox) {
     bMiss.textContent = (isOpen ? '▾ Fehlende Fahrzeuge' : '▴ Fehlende Fahrzeuge');
   };
 }
-
-
+/*
+// ✅ EINHEITLICH Fahrzeuge auswählen (LSS-sicher)
+function pick(v) {
+  try {
+    v.cb.click();          // echter Klick → LSS triggert alles
+  } catch {
+    v.cb.checked = true;  // Fallback, falls click nicht geht
+  }
+}
+*/
 
   // Details-Toggle
   bDet.onclick = () => {
@@ -2594,5 +2603,21 @@ function makeDraggable(el, { handleSelector = null, storageKey = null } = {}) {
     el._dragCleanup = null;
   };
 }
+
+    // ✅ LSS-sicher: "echter Klick", aber NIE toggle-aus Versehen
+function pick(v) {
+  if (!v?.cb) return false;
+  if (v.cb.checked) return true;      // <-- WICHTIG: nicht nochmal klicken!
+  try { v.cb.click(); } catch { v.cb.checked = true; }
+  return !!v.cb.checked;
+}
+
+    function unpick(cb) {
+  if (!cb) return false;
+  if (!cb.checked) return true;
+  try { cb.click(); } catch { cb.checked = false; }
+  return !cb.checked;
+}
+
 
 })();
