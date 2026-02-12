@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.50
+Version: 0.0.15.51
 */
 
 (function () {
   'use strict';
 
   // ===== VERSION SOFORT EXPORTIEREN =====
-  window.__ANFB_VERSION__ = '0.0.15.50';
+  window.__ANFB_VERSION__ = '0.0.15.51';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
@@ -29,7 +29,7 @@ Version: 0.0.15.50
 ##### Ab hier der Scriptcode #####
   */
     console.clear();
-    const BOT_VERSION = '0.0.15.50';
+    const BOT_VERSION = '0.0.15.51';
 
 /// *** GLOBALS Anfang***
     window.__ANFB_VERSION__ = BOT_VERSION;
