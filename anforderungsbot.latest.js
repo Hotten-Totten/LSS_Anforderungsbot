@@ -1,13 +1,13 @@
 /* 
 LSS_Anforderungsbot
-Version: 0.0.15.55
+Version: 0.0.15.52
 */
 
 (function () {
   'use strict';
 
   // ===== VERSION SOFORT EXPORTIEREN =====
-  window.__ANFB_VERSION__ = '0.0.15.55';
+  window.__ANFB_VERSION__ = '0.0.15.52';
 
   console.log('[ANFB] LIVE', window.__ANFB_VERSION__, new Date().toISOString());
 
@@ -28,8 +28,10 @@ Version: 0.0.15.55
     /*
 ##### Ab hier der Scriptcode #####
   */
-       console.clear();
-    const BOT_VERSION = '0.0.15.55';
+       
+
+    console.clear();
+    const BOT_VERSION = '0.0.15.52';
 
 /// *** GLOBALS Anfang***
     window.__ANFB_VERSION__ = BOT_VERSION;
@@ -42,21 +44,12 @@ Version: 0.0.15.55
 
     // 🔴 Standard: nur rote Einsätze bearbeiten
     window.AAO_PROCESS_ALL_COLORS = true;
-    // 💰 Min-Credits-Filter (Standard Aus)
-    window.AAO_MINCRED_ON = (localStorage.getItem('aao_mincred_on') === '0');
-    // 🔔 Abbruch-Info (Standard Ein)
-    window.AAO_ABORT_INFO_ON = localStorage.getItem('aao_abort_info_on') === '0';
-
+    // 💰 Min-Credits-Filter
+    window.AAO_MINCRED_ON  = (localStorage.getItem('aao_mincred_on') === '1');
     window.AAO_MINCRED_VAL = (() => {
         const v = parseInt(localStorage.getItem('aao_mincred_val') || '5000', 10);
         return Number.isFinite(v) ? v : 5000;
     })();
-    window.__AAO_CREDIT_CACHE__ = window.__AAO_CREDIT_CACHE__ || {};
-    window.AAO_ABORTED = false;
-
-
-
-
 
 /// *** GLOBALS Ende***
 
@@ -156,7 +149,6 @@ Version: 0.0.15.55
         vehicleTypeNormMap[tid] = names.map(norm);
     }
 
-
     function norm(str) {
         return String(str || '')
             .toLowerCase()
@@ -185,7 +177,6 @@ Version: 0.0.15.55
     vehicleTypeNameVariants[128] = (vehicleTypeNameVariants[128] || [])
         .concat(["drohneneinheit", "drohne", "uas", "drohnenstaffel", "drohnen-einheit"]);
 
-
 // Abhängigkeiten: wenn auf Typ X geklickt wird, soll Y mitgeschickt werden
 
     const dependentVehicleTypes = {
@@ -194,7 +185,6 @@ Version: 0.0.15.55
   175: [172], // NEA50 (Anhänger) -> LKW Technik (Zugfahrzeug)
   174: [171], // Anh TeSi -> GW TeSi
 };
-
 
     // Bestimmung der Einsatzfarbe Rot= Unbearbeitet oder fehlende Fahrzeuge, Gelb= Bearbeitet, Fahrzeuge auf Anfahrt, Grün= Einsatz wird beendet
 function getMissionColor(doc) {
@@ -207,8 +197,6 @@ function getMissionColor(doc) {
     return null;
 }
 
-
-
     function cleanLabel(label) {
         return label
             .replace(/einsatzart/gi, '')
@@ -219,8 +207,6 @@ function getMissionColor(doc) {
             .replace(/\s+/g, ' ')
             .trim();
     }
-
-
 
     // ▪ Patienten- und Gefangenen-Zähler
     function extractPatientsAndPrisoners(doc) {
@@ -259,86 +245,83 @@ function getMissionColor(doc) {
             // "wenn vorhanden" nur aus dem Text entfernen (damit das Mapping greift)
             label = label.replace(/\(?(wenn vorhanden)\)?/ig, '').trim();
 
-            return `${cnt}x ${label}`;
+            return ${cnt}x ${label};
             }).filter(Boolean);
     }
 
 // ▪ Patienten-Nachalarm (UI + Klick + Auto-Alarm)
 function handlePatientNachalarm(doc, attempt = 0, persist = { summed: null, alarmiert: {}, ended: false, autoFired: false }) {
-  const MAX = 1;
+    const MAX = 1; // wie gehabt
+    const needs = getPatientAlerts(doc);
+    if (!Object.keys(needs).length) return false;
 
-  const needs = getPatientAlerts(doc);
-  if (!Object.keys(needs).length) return false;
-
-  // Summierung inkl. Deckel für LNA/OrgL
-  if (!persist.summed) {
-    persist.summed = {};
-    let lna = false, orgl = false;
-
-    Object.entries(needs).forEach(([nm, c]) => {
-      nm.split(',').forEach(n => {
-        const s = n.trim();
-        if (s === 'LNA' && !lna) { persist.summed.LNA = 1; lna = true; }
-        else if (s === 'OrgL' && !orgl) { persist.summed.OrgL = 1; orgl = true; }
-        else persist.summed[s] = (persist.summed[s] || 0) + c;
-      });
-    });
-
-    ['LNA', 'OrgL'].forEach(k => { if (persist.summed[k] > 1) persist.summed[k] = 1; });
-  }
-
-  // Checkbox-Klicks
-  const map = { "RTW": 28, "NEF": 29, "LNA": 55, "OrgL": 56, "RTH": 31 };
-  Object.entries(persist.summed).forEach(([nm, c]) => {
-    const tid = map[nm];
-    let want = c - (persist.alarmiert[nm] || 0);
-    if (!tid || want <= 0) return;
-
-    [...doc.querySelectorAll('tr.vehicle_select_table_tr')].forEach(tr => {
-      if (!want) return;
-      const cb = tr.querySelector('input.vehicle_checkbox');
-      const id = +cb?.getAttribute('vehicle_type_id');
-      if (id === tid && cb && !cb.checked && !cb.disabled) {
-        try { cb.click(); } catch { cb.checked = true; }
-        if (cb.checked) {
-          want--;
-          persist.alarmiert[nm] = (persist.alarmiert[nm] || 0) + 1;
-        }
-      }
-    });
-  });
-
-  // Box zeichnen
-  renderNachalarmInfo(doc, persist.summed, persist.alarmiert, persist.ended, persist.autoFired);
-
-  // Noch Bedarf? Einmal nachladen (IM SELBEN DOC!)
-  const missing = Object.entries(persist.summed).filter(([n, c]) => (persist.alarmiert[n] || 0) < c);
-  const btn = doc.querySelector('a.missing_vehicles_load');
-
-  if (missing.length && btn && attempt < MAX) {
-    try { btn.click(); } catch {}
-    setTimeout(() => handlePatientNachalarm(doc, attempt + 1, persist), 900);
-    return true;
-  }
-
-  // Abschluss + Auto-Alarm (einmal)
-  persist.ended = true;
-  const allMet = Object.entries(persist.summed).every(([n, c]) => (persist.alarmiert[n] || 0) >= c);
-
-  if (allMet) {
-    if (!persist.autoFired && !doc.body.dataset.aaoPatientAutoFired) {
-      persist.autoFired = true;
-      doc.body.dataset.aaoPatientAutoFired = '1';
-      renderNachalarmInfo(doc, persist.summed, persist.alarmiert, true, true);
-      triggerAutoAlarm(doc);
+    // Summierung inkl. Deckel für LNA/OrgL
+    if (!persist.summed) {
+        persist.summed = {};
+        let lna = false, orgl = false;
+        Object.entries(needs).forEach(([nm, c]) => {
+            nm.split(',').forEach(n => {
+                const s = n.trim();
+                if (s === 'LNA' && !lna) { persist.summed.LNA = 1; lna = true; }
+                else if (s === 'OrgL' && !orgl) { persist.summed.OrgL = 1; orgl = true; }
+                else persist.summed[s] = (persist.summed[s] || 0) + c;
+            });
+        });
+        ['LNA', 'OrgL'].forEach(k => { if (persist.summed[k] > 1) persist.summed[k] = 1; });
     }
-  } else {
-    renderNachalarmInfo(doc, persist.summed, persist.alarmiert, true, false);
-  }
 
-  return true;
+    // Checkbox-Klicks
+    const map = { "RTW": 28, "NEF": 29, "LNA": 55, "OrgL": 56, "RTH": 31 };
+    Object.entries(persist.summed).forEach(([nm, c]) => {
+        const tid = map[nm];
+        let want = c - (persist.alarmiert[nm] || 0);
+        if (!tid || want <= 0) return;
+        [...doc.querySelectorAll('tr.vehicle_select_table_tr')].forEach(tr => {
+            if (!want) return;
+            const cb = tr.querySelector('input.vehicle_checkbox');
+            const id = +cb?.getAttribute('vehicle_type_id');
+            if (id === tid && !cb.checked) {
+                try { cb.click(); } catch { cb.checked = true; }
+                want--;
+                persist.alarmiert[nm] = (persist.alarmiert[nm] || 0) + 1;
+            }
+        });
+    });
+
+    // Box zeichnen
+    renderNachalarmInfo(doc, persist.summed, persist.alarmiert, persist.ended, persist.autoFired);
+
+    // Noch Bedarf? Einmal nachladen
+    const missing = Object.entries(persist.summed).filter(([n, c]) => (persist.alarmiert[n] || 0) < c);
+    const btn = doc.querySelector('a.missing_vehicles_load');
+    if (missing.length && btn && attempt < MAX) {
+        btn.click();
+        setTimeout(() => {
+            const nf = [...document.querySelectorAll('iframe.lightbox_iframe')].find(f => f.style.display !== 'none');
+            const nd = nf?.contentDocument || nf?.contentWindow?.document;
+            if (nd) handlePatientNachalarm(nd, attempt + 1, persist);
+        }, 2000);
+        return true;
+    }
+
+    // Abschluss
+    persist.ended = true;
+    const allMet = Object.entries(persist.summed).every(([n, c]) => (persist.alarmiert[n] || 0) >= c);
+
+    if (allMet) {
+        // Auto-Alarm nur einmal auslösen
+        if (!persist.autoFired && !doc.body.dataset.aaoPatientAutoFired) {
+            persist.autoFired = true;
+            doc.body.dataset.aaoPatientAutoFired = '1';
+            renderNachalarmInfo(doc, persist.summed, persist.alarmiert, true, true);
+            triggerAutoAlarm(doc);
+        }
+    } else {
+        renderNachalarmInfo(doc, persist.summed, persist.alarmiert, true, false);
+    }
+
+    return true;
 }
-
 
     function triggerAutoAlarm(doc) {
     // bevorzugt „Alarm & weiter“, sonst „Alarm + Verband“
@@ -352,113 +335,76 @@ function handlePatientNachalarm(doc, attempt = 0, persist = { summed: null, alar
     }
 }
 
-
-function getPatientAlerts(doc) {
-  const blocks = [
-    ...doc.querySelectorAll('.mission_patient .alert-danger'),
-    ...doc.querySelectorAll('#patients .alert-danger'),
-    ...doc.querySelectorAll('.alert.alert-danger')
-  ];
-
-  const out = {};
-  blocks.forEach(a => {
-    const t = (a.textContent || '').replace(/\s+/g, ' ').trim();
-    const m = t.match(/Wir benötigen:\s*([A-Za-zÄÖÜäöüß,\s]+)/i);
-    if (!m) return;
-
-    // z.B. "NEF", "RTW, NEF"
-    m[1].split(',').forEach(x => {
-      const k = x.trim();
-      if (!k) return;
-      out[k] = (out[k] || 0) + 1;
-    });
-  });
-
-  return out; // z.B. { NEF: 1 } oder { RTW: 2, NEF: 1 }
-}
-
-function renderNachalarmInfo(doc, summed, alarmed, ended = false, autoFired = false) {
-  const ui = doc.getElementById('aao-info');
-
-  // Box holen oder erstellen
-  let box = ui
-    ? ui.querySelector('#aao-nachalarminfo')
-    : doc.getElementById('aao-nachalarminfo');
-
-  if (!box) {
-    box = doc.createElement('div');
-    box.id = 'aao-nachalarminfo';
-
-    if (ui) {
-      ui.appendChild(box);
-    } else {
-      // Fallback: zentriert anzeigen
-      box.style.cssText = `
-        position:fixed;
-        left:50%;top:50%;
-        transform:translate(-50%,-50%);
-        z-index:99999;
-        background:#1e1e1e;
-        color:#fff;
-        padding:10px 12px;
-        border-radius:10px;
-        font-size:12px;
-        line-height:1.25;
-        box-shadow:0 3px 14px rgba(0,0,0,.45);
-        width:360px;
-        max-width:92vw;
-        border:1px solid #2a2a2a;
-      `;
-      doc.body.appendChild(box);
+    function getPatientAlerts(doc) {
+        const alerts=[...doc.querySelectorAll('.mission_patient .alert-danger')];
+        const o={};
+        alerts.forEach(a=>{
+            const m=a.textContent.match(/Wir benötigen:\s*(.+)/i);
+            if(m) o[m[1].trim()] = (o[m[1].trim()]||0)+1;
+        });
+        return o;
     }
-  }
+function renderNachalarmInfo(doc, summed, alarmed, ended = false, autoFired = false) {
+    const ui = doc.getElementById('aao-info');
 
-  // Wenn UI später existiert → Box dort einhängen
-  if (ui && box.parentElement !== ui) {
-    box.remove();
-    ui.appendChild(box);
-  }
+    // Box holen/erstellen – bevorzugt als Kind von #aao-info
+    let box = ui ? ui.querySelector('#aao-nachalarminfo') : doc.getElementById('aao-nachalarminfo');
+    if (!box) {
+        box = doc.createElement('div');
+        box.id = 'aao-nachalarminfo';
+        if (ui) {
+            ui.appendChild(box);
+        } else {
+            // Fallback: kurz eigenständig anzeigen, bis das UI erscheint
+            box.style.cssText = 
+              position:fixed;left:50%;top:calc(50% + 220px);transform:translate(-50%,0);z-index:99999;
+              background:#1e1e1e;color:#fff;padding:8px 10px;border-radius:10px;
+              font-size:12px;line-height:1.25;box-shadow:0 3px 14px rgba(0,0,0,.45);
+              width:360px;max-width:92vw;border:1px solid #2a2a2a;
+            ;
+            doc.body.appendChild(box);
+        }
+    }
 
-  // Inline-Style im UI
-  if (ui && box.parentElement === ui) {
-    box.style.cssText = `
-      margin-top:8px;
-      padding:8px;
-      border-radius:8px;
-      background:#202020;
-      border:1px solid #2a2a2a;
-      white-space:pre-wrap;
-      font-size:12px;
-      line-height:1.25;
-      color:#fff;
-    `;
-  }
+    // Wenn das UI inzwischen existiert, Box dort "anbauen"
+    if (ui && box.parentElement !== ui) {
+        box.remove();
+        ui.appendChild(box);
+    }
 
-  // Inhalt
-  const rows = Object.entries(summed).map(([n, c]) => {
-    const a = alarmed[n] || 0;
-    const miss = c - a;
-    return `${c}× ${n} → nachalarmiert: ${a}${miss > 0 ? ` (fehlend: ${miss})` : ''}`;
-  }).join('\n');
+    // Styling je nach Platzierung (inline im UI vs. separat)
+    const inline = ui && box.parentElement === ui;
+    if (inline) {
+        box.style.cssText = 
+          margin-top:8px;padding:8px;border-radius:8px;
+          background:#202020;border:1px solid #2a2a2a;
+          white-space:pre-wrap;font-size:12px;line-height:1.25;color:#fff;
+        ;
+    }
 
-  let status;
-  if (!ended) status = '⏳ Nachalarm läuft…';
-  else if (autoFired) status = '✅ Nachalarm erfüllt – Alarm ausgelöst';
-  else status = '⚠️ Nachalarm beendet – nicht alles verfügbar';
+    // Inhalt bauen
+    const rows = Object.entries(summed).map(([n, c]) => {
+        const a = alarmed[n] || 0, miss = c - a;
+        return ${c}× ${n} → nachalarmiert: ${a}${miss ?  (fehlend: ${miss}) : ''};
+    }).join('\n');
 
-  box.innerHTML = `
-    <div style="font-weight:600;margin-bottom:4px;">🚑 Patienten-Nachalarm</div>
-    <pre style="margin:0;white-space:pre-wrap">${rows}</pre>
-    <div style="margin-top:6px;opacity:.85">${status}</div>
-  `;
+    let status;
+    if (!ended) status = '⏳ Nachalarm läuft…';
+    else if (autoFired) status = '✅ Nachalarm erfüllt – Alarm ausgelöst…';
+    else status = '⚠️ Nachalarm beendet, nicht alle Fahrzeuge verfügbar!';
 
-  // draggable nur 1x
-  if (!box.dataset.dragInit && typeof makeDraggable === 'function') {
-    box.dataset.dragInit = '1';
-    makeDraggable(box, { storageKey: 'aao_nachalarm_pos' });
-  }
+    box.innerHTML = 
+      <div style="font-weight:600;margin-bottom:4px;">🚑 Patienten-Nachalarm</div>
+      <pre style="margin:0;white-space:pre-wrap">${rows}</pre>
+      <div style="margin-top:6px;opacity:.85">${status}</div>
+    ;
+// ✅ Draggable (PC + Tablet) – nur 1x initialisieren
+if (!box.dataset.dragInit) {
+  box.dataset.dragInit = '1';
+  makeDraggable(box, { handleSelector: '#aao-drag-handle', storageKey: 'aao_info_pos' });
 }
 
+}
 
     // ▪ Haupt-AAO: Fahrzeuge auswählen
 
@@ -467,7 +413,6 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
     const selectedTypeCounts = {};
     const missingTypeCounts = {};
     let water = 0, people = 0;
-
 
     // --- RTW, NEF, RTH nur bei Erstanforderung aus Hilfeseite ---
     if (istHilfeSeite && actualPatients > 0) {
@@ -483,14 +428,14 @@ function selectVehiclesByRequirement(reqs, mapping, actualPatients = 0, istHilfe
             }
             if (nefCount > 0) {
                 typeIdCounts[29] = Math.max(typeIdCounts[29] || 0, nefCount);
-                console.log(`➕ NEF (Typ 29): ${nefCount} für ${actualPatients} Patienten bei ${nefProb}% Wahrscheinlichkeit`);
+                console.log(➕ NEF (Typ 29): ${nefCount} für ${actualPatients} Patienten bei ${nefProb}% Wahrscheinlichkeit);
             }
         }
         // RTH nach Wahrscheinlichkeit
         if (rthProb > 0) {
             const rthCount = Math.ceil((rthProb / 100) * actualPatients);
             typeIdCounts[31] = Math.max(typeIdCounts[31] || 0, rthCount);
-            console.log(`➕ RTH (Typ 31): ${rthCount} für ${actualPatients} Patienten bei ${rthProb}% Wahrscheinlichkeit`);
+            console.log(➕ RTH (Typ 31): ${rthCount} für ${actualPatients} Patienten bei ${rthProb}% Wahrscheinlichkeit);
         }
         // LNA/OrgL-Deckel
         if (actualPatients > 4) typeIdCounts[55] = 1;
@@ -630,37 +575,37 @@ if (sonderbedarf > 0) {
   if (remaining > 0) {
     const needFLF = Math.ceil(remaining / FLF_CAP);
     missingTypeCounts[75] = (missingTypeCounts[75] || 0) + needFLF;
-    console.warn(`⚠️ Sonderlöschmittel fehlen noch ca. ${remaining}l → ${needFLF}x FLF (Typ 75)`);
+    console.warn(⚠️ Sonderlöschmittel fehlen noch ca. ${remaining}l → ${needFLF}x FLF (Typ 75));
   }
 
-  console.log(`🔥 Sonderlöschmittel: Bedarf=${sonderbedarf}l, Rest=${Math.max(0, remaining)}l`);
+  console.log(🔥 Sonderlöschmittel: Bedarf=${sonderbedarf}l, Rest=${Math.max(0, remaining)}l);
 }
 
         // --- Boote: egal welcher Typ, wir zählen auf Solltyp 66 und wählen später äquivalent aus ---
         if (/\bboot|boote\b/i.test(label)) {
             typeIdCounts[66] = (typeIdCounts[66] || 0) + cnt;
-            console.log(`➕ Boot-Anforderung erkannt: +${cnt} (Solltyp 66; Auswahl über 66/70/68/67)`);
+            console.log(➕ Boot-Anforderung erkannt: +${cnt} (Solltyp 66; Auswahl über 66/70/68/67));
             return;
         }
         // Spezielle Fallback-Sonderfälle (zuerst prüfen)
         if (label.includes('dienstgruppenleitung')) {
             found = 103;
-            console.log(`🔍 Fallback: Typ 103 (FuStW-DGL) wegen "${label}"`);
+            console.log(🔍 Fallback: Typ 103 (FuStW-DGL) wegen "${label}");
         }
         else if (label.includes('elw 1')) {
             // Wichtig: "ELW 1" wird als Typ 3 gezählt – Fallbacks decken 34/129 ab
             found = 3;
-            console.log(`🔍 ELW 1-Anforderung → Basis-Typ 3 (Fallbacks: 34, 129)`);
+            console.log(🔍 ELW 1-Anforderung → Basis-Typ 3 (Fallbacks: 34, 129));
         }
         else if (label.includes('betreuungs- und verpflegungsausstattung')) {
             found = 130;
-            console.log(`🔍 Fallback: Typ 130 (GW-Bt) wegen "${label}"`);
+            console.log(🔍 Fallback: Typ 130 (GW-Bt) wegen "${label}");
         }
         else if (label.includes('wasserbedarf')) {
             const x = label.match(/(\d+)/); const minBD = x ? parseInt(x[1], 10) : cnt;
             const need = Math.ceil(minBD / 1600);
             found = 30;
-            console.log(`🔍 Fallback: Wasserbedarf → ${need}x HLF20 (1.600 l) (Typ 30) für ${minBD} Wasser`);
+            console.log(🔍 Fallback: Wasserbedarf → ${need}x HLF20 (1.600 l) (Typ 30) für ${minBD} Wasser);
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
@@ -668,7 +613,7 @@ if (sonderbedarf > 0) {
             const x = label.match(/(\d+)/); const minFF = x ? parseInt(x[1], 10) : cnt;
             const need = Math.ceil(minFF / 9);
             found = 30;
-            console.log(`🔍 Fallback: Mindest-Feuerwehrleute → ${need}x HLF20 (Typ 30) für ${minFF} Feuerwehrleute`);
+            console.log(🔍 Fallback: Mindest-Feuerwehrleute → ${need}x HLF20 (Typ 30) für ${minFF} Feuerwehrleute);
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
@@ -676,7 +621,7 @@ if (sonderbedarf > 0) {
             const x = label.match(/(\d+)/); const minDekon = x ? parseInt(x[1], 10) : cnt;
             const need = Math.ceil(minDekon / 6);
             found = 53;
-            console.log(`🔍 Fallback: Fehlende Dekon-P Leute → ${need}x Dekon-P (Typ 53) für ${minDekon} Dekon-P Leute`);
+            console.log(🔍 Fallback: Fehlende Dekon-P Leute → ${need}x Dekon-P (Typ 53) für ${minDekon} Dekon-P Leute);
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
@@ -687,14 +632,14 @@ if (sonderbedarf > 0) {
         // ✅ GW-Wasserrettung als FAHRZEUG-Anforderung: immer exakt Typ 64 zählen
 else if (label.replace(/[\s\-]/g, '').includes('gwwasserrettung')) {
   found = 64; // GW-Wasserrettung Fahrzeugtyp
-  console.log(`🔍 Fahrzeug-Anforderung: GW-Wasserrettung → Typ 64 (cnt=${cnt})`);
+  console.log(🔍 Fahrzeug-Anforderung: GW-Wasserrettung → Typ 64 (cnt=${cnt}));
   // und dann ganz normal unten typeIdCounts[found] += cnt laufen lassen
 }
         else if (label.includes('betreuungshelfer')) {
             const x = label.match(/(\d+)/); const minBH = x ? parseInt(x[1], 10) : cnt;
             const need = Math.ceil(minBH / 9);
             found = 131;
-            console.log(`🔍 Fallback: Fehlende Betreuungshelfer → ${need}x Typ 131 für ${minBH} Leute`);
+            console.log(🔍 Fallback: Fehlende Betreuungshelfer → ${need}x Typ 131 für ${minBH} Leute);
             typeIdCounts[found] = (typeIdCounts[found] || 0) + need;
             return;
         }
@@ -707,13 +652,12 @@ if (!found && (nLabel.includes('taucher') || nLabel.includes('tauchkraftwagen') 
   if (has63) found = 63;
   else if (has69) found = 69;
 
-  console.log(`🔍 Taucher-Sonderfall → genommen: ${found} (63:${has63}, 69:${has69})`);
+  console.log(🔍 Taucher-Sonderfall → genommen: ${found} (63:${has63}, 69:${has69}));
 }
 
         // Kein Sonderfall → Mapping inkl. "oder"-Logik (robust normalisiert)
 if (!found) {
   // nLabel ist oben schon berechnet
-
 
   // "oder"-Fälle: jede Alternative einzeln matchen
   if (label.includes(' oder ')) {
@@ -723,7 +667,7 @@ if (!found) {
       for (const [tid, vars] of Object.entries(vehicleTypeNormMap)) {
         if (vars.some(v => nAlt.includes(v) || v.includes(nAlt))) {
           found = +tid;
-          console.log(`🔍 Match (ODER): "${alt}" → Typ ${tid}`);
+          console.log(🔍 Match (ODER): "${alt}" → Typ ${tid});
           break outer;
         }
       }
@@ -733,13 +677,12 @@ if (!found) {
     for (const [tid, vars] of Object.entries(vehicleTypeNormMap)) {
       if (vars.some(v => nLabel.includes(v) || v.includes(nLabel))) {
         found = +tid;
-        console.log(`🔍 Match: "${label}" → Typ ${tid}`);
+        console.log(🔍 Match: "${label}" → Typ ${tid});
         break;
       }
     }
   }
 }
-
 
         if (!found) {
             console.warn('⚠️ Kein Typ für', label);
@@ -764,11 +707,11 @@ if (!found) {
     let lfByWater = 0, lfByPeople = 0;
     if (water > 0) {
         lfByWater = Math.ceil(water / 1600);
-        if (lfByWater > 0) console.log(`➕ Wasser-Abgleich: ${lfByWater}x Typ 30 für ${water} l`);
+        if (lfByWater > 0) console.log(➕ Wasser-Abgleich: ${lfByWater}x Typ 30 für ${water} l);
     }
     if (people > 0) {
         lfByPeople = Math.ceil(people / 9);
-        if (lfByPeople > 0) console.log(`➕ Personal-Abgleich: ${lfByPeople}x Typ 30 für ${people} Feuerwehrleute`);
+        if (lfByPeople > 0) console.log(➕ Personal-Abgleich: ${lfByPeople}x Typ 30 für ${people} Feuerwehrleute);
     }
     const direkterLF = typeIdCounts[30] || 0;
     const maximalLF = Math.max(direkterLF, lfByWater, lfByPeople);
@@ -777,12 +720,12 @@ if (!found) {
     if (wasserbedarf > 0) {
         const need = Math.ceil(wasserbedarf / 1600);
         typeIdCounts[30] = Math.max(typeIdCounts[30] || 0, need);
-        console.log(`➕ Wasserbedarf-Abgleich: ${need}x Typ 30 für ${wasserbedarf} Liter Wasser`);
+        console.log(➕ Wasserbedarf-Abgleich: ${need}x Typ 30 für ${wasserbedarf} Liter Wasser);
     }
     if (dekonpeople > 0) {
         const need = Math.ceil(dekonpeople / 6);
         typeIdCounts[53] = Math.max(typeIdCounts[53] || 0, need);
-        console.log(`➕ Personal-Abgleich: ${need}x Typ 53 für ${dekonpeople} Dekon-P`);
+        console.log(➕ Personal-Abgleich: ${need}x Typ 53 für ${dekonpeople} Dekon-P);
     }
 if (wasserpeople > 0) {
   let remaining = wasserpeople;
@@ -823,18 +766,18 @@ if (wasserpeople > 0) {
   if (need39 > 0) typeIdCounts[39] = Math.max(typeIdCounts[39] || 0, need39);
   if (need64 > 0) typeIdCounts[64] = Math.max(typeIdCounts[64] || 0, need64);
 
-  console.log(`➕ Personal-Abgleich GW-Wasserrettung: Bedarf=${wasserpeople} → plane ${need39}×39 (9er) + ${need64}×64 (6er)`);
+  console.log(➕ Personal-Abgleich GW-Wasserrettung: Bedarf=${wasserpeople} → plane ${need39}×39 (9er) + ${need64}×64 (6er));
 }
 
     if (betreuerpeople > 0) {
         const need = Math.ceil(betreuerpeople / 9);
         typeIdCounts[131] = Math.max(typeIdCounts[131] || 0, need);
-        console.log(`➕ Personal-Abgleich: ${need}x Typ 131 für ${betreuerpeople} Betreuungshelfer`);
+        console.log(➕ Personal-Abgleich: ${need}x Typ 131 für ${betreuerpeople} Betreuungshelfer);
     }
     if (sonderbedarf > 0) {
         const need = Math.ceil(sonderbedarf / 5000);
         typeIdCounts[167] = Math.max(typeIdCounts[167] || 0, need);
-        console.log(`➕ Sonderlöschmittel-Abgleich: ${need}x Typ 167 (SLF) für ${sonderbedarf} Sonderlöschmittel`);
+        console.log(➕ Sonderlöschmittel-Abgleich: ${need}x Typ 167 (SLF) für ${sonderbedarf} Sonderlöschmittel);
     }
 
     // ── SEG-Ableitung aus RTW-Bedarf ──
@@ -856,15 +799,14 @@ if (wasserpeople > 0) {
     // auf Soll anheben (nicht additiv „draufzählen“)
     if (wantGwSan > curGwSan) {
       typeIdCounts[60] = wantGwSan;
-      if (wantGwSan > 0) console.log(`➕ SEG-Logik: ${wantGwSan}× GW-San (60) wegen ${rtwNeed} RTW`);
+      if (wantGwSan > 0) console.log(➕ SEG-Logik: ${wantGwSan}× GW-San (60) wegen ${rtwNeed} RTW);
     }
     if (wantElwSeg > curElwSeg) {
       typeIdCounts[59] = wantElwSeg;
-      if (wantElwSeg > 0) console.log(`➕ SEG-Logik: ${wantElwSeg}× ELW1 (SEG) (59) wegen ${rtwNeed} RTW`);
+      if (wantElwSeg > 0) console.log(➕ SEG-Logik: ${wantElwSeg}× ELW1 (SEG) (59) wegen ${rtwNeed} RTW);
     }
   }
 }
-
 
     // (Optional) Debug: Sollmengen protokollieren – ohne GKW-Autologik
     const boatNeed = (typeIdCounts[66] || 0) + (typeIdCounts[67] || 0) + (typeIdCounts[68] || 0) + (typeIdCounts[70] || 0);
@@ -897,7 +839,7 @@ if (wasserpeople > 0) {
 
     if (needGKW > 0) {
       typeIdCounts[39] = gkwPlanned + needGKW;
-      console.log(`➕ GKW-Logik: ${totalBoats} Boot(e) vorhanden → ergänze ${needGKW}× GKW (Typ 39)`);
+      console.log(➕ GKW-Logik: ${totalBoats} Boot(e) vorhanden → ergänze ${needGKW}× GKW (Typ 39));
     } else {
       console.log('ℹ️ GKW-Logik: Bereits ausreichend GKW am/auf dem Weg – keine Ergänzung nötig.');
     }
@@ -913,7 +855,7 @@ Object.entries(typeIdCounts).forEach(([tidStr, need]) => {
 
     // Bereits unterwegs abziehen
     const already = assignedCounts[tid] || 0;
-    if (already) console.log(`ℹ️ Ziehe ${already}x Typ ${tid} ab (FMS 3/4)`);
+    if (already) console.log(ℹ️ Ziehe ${already}x Typ ${tid} ab (FMS 3/4));
     let rem = Math.max(need - already, 0);
 
 // 🚤 BOOT-SPEZIALPFAD (IDs 66,67,68,70 – nacheinander suchen)
@@ -927,7 +869,7 @@ if (tid === 66) {
 
   if (alreadyBoats > 0) {
     rem = Math.max(rem - alreadyBoats, 0);
-    console.log(`ℹ️ Boote: ziehe bereits alarmierte Boote ab: ${alreadyBoats} → rem=${rem}`);
+    console.log(ℹ️ Boote: ziehe bereits alarmierte Boote ab: ${alreadyBoats} → rem=${rem});
   }
 
   if (rem <= 0) {
@@ -950,7 +892,7 @@ if (tid === 66) {
         // zählen IMMER auf Solltyp 66 hoch
         selectedTypeCounts[66] = (selectedTypeCounts[66] || 0) + 1;
         rem--;
-        console.log(`✅ Boot gewählt: Typ ${v.tid} → rem=${rem}`);
+        console.log(✅ Boot gewählt: Typ ${v.tid} → rem=${rem});
       }
     }
   }
@@ -958,16 +900,13 @@ if (tid === 66) {
   // 3) Rest fehlt → loggen
   if (rem > 0) {
     missingTypeCounts[66] = (missingTypeCounts[66] || 0) + rem;
-    console.warn(`⚠️ Boote: es fehlen noch ${rem} Boot(e) (nicht genug verfügbar)!`);
+    console.warn(⚠️ Boote: es fehlen noch ${rem} Boot(e) (nicht genug verfügbar)!);
   } else {
-    console.log(`🟩 Boote erfüllt: Soll=${typeIdCounts[66]} Gewählt=${selectedTypeCounts[66] || 0}`);
+    console.log(🟩 Boote erfüllt: Soll=${typeIdCounts[66]} Gewählt=${selectedTypeCounts[66] || 0});
   }
 
   return; // Boote fertig
 }
-
-
-
 
 // ✅ RTH-Prio: wenn 31 gefordert ist, nimm erst 157 (RTH Winde), dann 31
 if (tid === 31 && rem > 0) {
@@ -1031,7 +970,7 @@ if (rem > 0 && fallbackVehicleTypes[tid]) {
       if (rem > 0 && v.tid === fb && !v.cb.checked) {
         if (pick(v)) {
           selectedTypeCounts[tid] = (selectedTypeCounts[tid] || 0) + 1;
-          console.log(`🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid}`);
+          console.log(🔄 Ersatz: 1x Typ ${fb} statt Typ ${tid});
           rem--;
         }
       }
@@ -1043,28 +982,12 @@ if (rem > 0 && fallbackVehicleTypes[tid]) {
 // 3) Fehlstände loggen (für ALLE, auch Typ 11)
 if (rem > 0) {
   missingTypeCounts[tid] = rem;
-  console.warn(`⚠️ Für Typ ${tid} fehlen noch ${rem}`);
+  console.warn(⚠️ Für Typ ${tid} fehlen noch ${rem});
 }
 });
 
-
     return { typeIdCounts, selectedTypeCounts, missingTypeCounts };
 } // ← HIER endet selectVehiclesByRequirement korrekt
-
-
-function buildMissingTextOnly(missingTypeCounts, vehicleTypeNameVariants) {
-  const entries = Object.entries(missingTypeCounts || {}).filter(([,c]) => c > 0);
-  if (!entries.length) return 'Bitte um Amtshilfe! ';
-
-  const nameOf = (tid) => vehicleTypeNameVariants?.[tid]?.[0] || `Typ ${tid}`;
-
-  const list = entries
-    .sort((a,b)=> (+a[0])-(+b[0]))
-    .map(([tid,c]) => `${c}× ${nameOf(+tid)}`)
-    .join(', ');
-
-  return `Bitte Amtshilfe:\nFehlende Fahrzeuge: ${list}`;
-}
 
   // ── Helpers ─────────────────────────────────────────────────
 function renderInfoBox(doc, typeIdCounts, selectedTypeCounts,
@@ -1073,79 +996,20 @@ function renderInfoBox(doc, typeIdCounts, selectedTypeCounts,
                       fehlende, hilfe,
                       statusText = '', credits = '', missingTypeCounts = {}) {
 
+function buildMissingTextOnly(missingTypeCounts, vehicleTypeNameVariants) {
+  const entries = Object.entries(missingTypeCounts || {}).filter(([,c]) => c > 0);
+  if (!entries.length) return 'Bitte um Amtshilfe! ';
 
+  const nameOf = (tid) =>
+    vehicleTypeNameVariants?.[tid]?.[0] || Typ ${tid};
 
+  const list = entries
+    .sort((a,b)=> (+a[0])-(+b[0]))
+    .map(([tid,c]) => ${c}× ${nameOf(+tid)})
+    .join(', ');
 
-async function tool2plus3_AmtshilfeAndAlert(d = doc) {
-  if (lblStatus) lblStatus.textContent = '💬 Amtshilfe vorbereiten…';
-
-  // === SCHRITT 1: das, was dein blauer Button macht ===
-  const txt = buildMissingTextOnly(
-    missingTypeCounts,
-    vehicleTypeNameVariants
-  );
-
-  // Freigabe + Haken + Text
-  await (async () => {
-    const getField = () =>
-      d.querySelector('#mission_reply_content') ||
-      window.top?.document?.querySelector('#mission_reply_content');
-
-    const getCb = () =>
-      d.querySelector('#mission_reply_alliance_chat') ||
-      window.top?.document?.querySelector('#mission_reply_alliance_chat');
-
-    const shareBtn =
-      d.querySelector('#mission_alliance_share_btn') ||
-      window.top?.document?.querySelector('#mission_alliance_share_btn');
-
-    // Freigeben, falls nötig
-    if (!getField() || !getCb()) {
-      try { shareBtn?.click(); } catch {}
-    }
-
-    const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      const field = getField();
-      const cb = getCb();
-      if (field && cb) {
-        cb.checked = true;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
-
-        const TEXT = `Bitte Amtshilfe: ${txt}`;
-        field.focus();
-        if ('value' in field) field.value = TEXT;
-        else field.textContent = TEXT;
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        return;
-      }
-      await new Promise(r => setTimeout(r, 200));
-    }
-  })();
-
-  // kurze Luft fürs UI
-  await new Promise(r => setTimeout(r, 300));
-
-  // === SCHRITT 2: das, was dein roter Button macht ===
-  if (lblStatus) lblStatus.textContent = '📨 Senden & Alarm…';
-
-  const submitBtn =
-    d.querySelector('.input-group-addon button[type="submit"]') ||
-    window.top?.document?.querySelector('.input-group-addon button[type="submit"]');
-
-  try { submitBtn?.click(); } catch {}
-
-  await new Promise(r => setTimeout(r, 250));
-
-  const alertBtn =
-    d.querySelector('a.alert_next') ||
-    window.top?.document?.querySelector('a.alert_next');
-
-  try { alertBtn?.click(); } catch {}
-
-  if (lblStatus) lblStatus.textContent = '✅ Amtshilfe gesendet & weiter';
+  return Bitte Amtshilfe: \nFehlende Fahrzeuge: ${list};
 }
-
 
 // =====================
 // 🔧 Chat-Helfer (GLOBAL)
@@ -1192,9 +1056,6 @@ async function fillAndTickOnly(doc, message, opts = { onlyIfEmpty: true }) {
 
   return true;
 }
-
-
-
 
   const fmt = n => {
     if (!n && n !== 0) return 'k.A.';
@@ -1246,7 +1107,7 @@ async function fillAndTickOnly(doc, message, opts = { onlyIfEmpty: true }) {
       addr = (smallTxt.split('|')[0] || '').trim();
     }
     const ort = addr.includes(',') ? addr.split(',').pop().trim() : (addr || '—');
-    return `${kredTxt} | ${ort}`;
+    return ${kredTxt} | ${ort};
   }
 
 // Feld befüllen (nur wenn leer) + Checkbox setzen + absenden
@@ -1330,34 +1191,52 @@ function clickAlarmAndNext(d = doc) {
   return iframe?.contentDocument || iframe?.contentWindow?.document || null;
 }
 
-function getCreditsFromDoc(d) {
+    function getCreditsFromDoc(d) {
   if (!d) return 0;
 
-  // 1) LSS-Text (falls vorhanden)
   const t = (d.querySelector('#mission_general_info')?.textContent || '') + '\n' +
             (d.body?.innerText || '');
 
-  // "Verdienst: 2.500 Credits"
-  let m = t.match(/Verdienst:\s*([\d.]+)\s*Credits/i);
-  if (m) return parseInt(m[1].replace(/\./g, ''), 10) || 0;
+  // "Verdienst: 3.840 Credits"
+  const m1 = t.match(/Verdienst:\s*([\d.]+)\s*Credits/i);
+  if (m1) return parseInt(m1[1].replace(/\./g, ''), 10) || 0;
 
-  // "Credits im Durchschnitt ... 2.500"
-  m = t.match(/Credits im Durchschnitt.*?([\d.]+)/i);
-  if (m) return parseInt(m[1].replace(/\./g, ''), 10) || 0;
-
-  // 2) Fallback: aus deiner AAO-Box (💰 2.500)
-  const box = d.getElementById('aao-info');
-  if (box) {
-    const s = box.textContent || '';
-    const mm = s.match(/💰\s*([\d.]+)/);
-    if (mm) return parseInt(mm[1].replace(/\./g, ''), 10) || 0;
-
-    // noch robuster: irgendeine Zahl direkt nach 💰
-    const mm2 = s.match(/💰\s*([0-9][0-9.\s]*)/);
-    if (mm2) return parseInt(mm2[1].replace(/\D/g, ''), 10) || 0;
-  }
+  // Fallback: "Credits im Durchschnitt ... 3.840"
+  const m2 = t.match(/Credits im Durchschnitt.*?([\d.]+)/i);
+  if (m2) return parseInt(m2[1].replace(/\./g, ''), 10) || 0;
 
   return 0;
+}
+
+function applyMinCreditsFilter(mdoc) {
+  if (!window.AAO_MINCRED_ON) return false;
+
+  const min = Number(window.AAO_MINCRED_VAL || 0);
+  const c = getCreditsFromDoc(mdoc);
+
+  // wenn Credits nicht gefunden -> NICHT skippen
+  if (!c) return false;
+
+  if (c < min) {
+    console.log(💰 Skip: ${c} < ${min});
+
+    // erst "Nächster Einsatz"
+    const nextBtn = mdoc.querySelector('#mission_next_mission_btn');
+    if (nextBtn && nextBtn.getAttribute('href') && nextBtn.getAttribute('href') !== '#') {
+      try { nextBtn.click(); } catch {}
+      return true;
+    }
+
+    // sonst Lightbox schließen
+    const closeBtn =
+      window.top?.document?.getElementById('lightbox_close_inside') ||
+      window.top?.document?.querySelector('.lightbox_close, button.close, .close');
+
+    try { closeBtn?.click(); } catch {}
+    return true;
+  }
+
+  return false;
 }
 
 function quick2xHLF_OrFallback_AndAlert() {
@@ -1394,7 +1273,7 @@ function quick2xHLF_OrFallback_AndAlert() {
     }
   }
 
-  if (lblStatus) lblStatus.textContent = `🚒 Quick: ${picked}/2× (30→0→32) gewählt…`;
+  if (lblStatus) lblStatus.textContent = 🚒 Quick: ${picked}/2× (30→0→32) gewählt…;
 
   // 3) Alarm & weiter
   const btn = d.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
@@ -1404,11 +1283,10 @@ function quick2xHLF_OrFallback_AndAlert() {
     return;
   }
 
-  if (picked < 2) console.warn(`[AAO] Nur ${picked}/2 verfügbar – alarmiere trotzdem.`);
+  if (picked < 2) console.warn([AAO] Nur ${picked}/2 verfügbar – alarmiere trotzdem.);
 
   setTimeout(() => { try { btn.click(); } catch {} }, 150);
 }
-
 
   // Emoji
   const ids = Object.keys(typeIdCounts).map(Number);
@@ -1429,7 +1307,7 @@ let box = doc.getElementById('aao-info');
 if (!box) {
     box = doc.createElement('div');
     box.id = 'aao-info';
-box.style.cssText = `
+box.style.cssText = 
   position:fixed;
   top:250px;
   right:350px;
@@ -1445,15 +1323,15 @@ box.style.cssText = `
   min-width:280px;
   border:1px solid #2a2a2a;
   overflow: visible;   /* 🔥 DAS ist der Fix */
-`;
+;
     doc.body.appendChild(box);
 }
 
 const kred = credits ? fmt(credits) : 'k.A.';
-const small = (t)=>`<span style="opacity:.85">${t}</span>`;
+const small = (t)=><span style="opacity:.85">${t}</span>;
 const makeList = (arr) => !arr?.length
   ? '<i style="opacity:.7">keine</i>'
-  : '<ul style="margin:4px 0 0 16px;padding:0;">' + arr.map(e=>`<li>${e}</li>`).join('') + '</ul>';
+  : '<ul style="margin:4px 0 0 16px;padding:0;">' + arr.map(e=><li>${e}</li>).join('') + '</ul>';
 
     // 🔴🟡🟢 Einsatz-Farbe bestimmen
 function getMissionColor(doc) {
@@ -1472,7 +1350,6 @@ function getMissionColor(doc) {
 
 const missionColor = getMissionColor(doc);
     console.log('[AAO] missionColor=', missionColor);
-
 
 box.innerHTML = `
 <div id="aao-drag-handle"
@@ -1554,97 +1431,72 @@ box.innerHTML = `
     <div id="aao-missing-list" style="display:none;margin-top:6px;"></div>
   </div>
 
-  <!-- ✅ Side-Rail rechts (aus-/einklappbar) -->
-  <div id="aao-side-rail"
-       style="
-         position:absolute;
-         top:44px;
-         right:-2px;
-         display:flex;
-         flex-direction:row;
-         align-items:flex-start;
-         gap:6px;
-         z-index:99999;
-         pointer-events:auto;
-       ">
+    <!-- ✅ Side-Rail rechts (aus-/einklappbar) -->
+<div id="aao-side-rail"
+     style="
+       position:absolute;
+       top:44px;
+       right:-2px;
+       display:flex;
+       flex-direction:row; /* 👉 klappt jetzt NACH RECHTS auf */
+       align-items:flex-start;
+       gap:6px;
+       z-index:99999;
+       pointer-events:auto;
+     ">
 
-    <!-- Toggle-Lasche -->
-    <button id="aao-side-toggle"
-            title="Tools ein-/ausklappen"
-            style="
-              border:0;
-              cursor:pointer;
-              user-select:none;
-              padding:8px 6px;
-              border-radius:8px;
-              background:#2b2b2b;
-              color:#fff;
-              font-size:11px;
-              box-shadow:0 2px 10px rgba(0,0,0,.35);
-              writing-mode:vertical-rl;
-              transform:rotate(180deg);
-              opacity:.9;
-            ">TOOLS</button>
+  <!-- Toggle-Lasche -->
+  <button id="aao-side-toggle"
+          title="Tools ein-/ausklappen"
+          style="
+            border:0;
+            cursor:pointer;
+            user-select:none;
+            padding:8px 6px;
+            border-radius:8px;
+            background:#2b2b2b;
+            color:#fff;
+            font-size:11px;
+            box-shadow:0 2px 10px rgba(0,0,0,.35);
+            writing-mode:vertical-rl;
+            transform:rotate(180deg);
+            opacity:.9;
+          ">TOOLS</button>
 
-    <!-- Panel -->
-    <div id="aao-side-panel"
-         style="
-           display:none;
-           position:absolute;
-           top:0;
-           left:100%;
-           margin-left:6px;
-           min-width:190px;
-           padding:8px;
-           border-radius:10px;
-           background:#151515;
-           border:1px solid #2a2a2a;
-           box-shadow:0 3px 14px rgba(0,0,0,.45);
-           z-index:100000;
-         ">
+  <!-- Panel -->
+<div id="aao-side-panel"
+     style="
+       display:none;
+       position:absolute;
+       top:0;
+       left:100%;           /* 👉 außerhalb der GUI */
+       margin-left:6px;     /* kleiner Abstand */
+       min-width:160px;
+       padding:8px;
+       border-radius:10px;
+       background:#151515;
+       border:1px solid #2a2a2a;
+       box-shadow:0 3px 14px rgba(0,0,0,.45);
+       z-index:100000;
+     ">
+    <div style="font-weight:700;margin-bottom:6px;">🧰 Tools</div>
 
-      <div style="font-weight:700;margin-bottom:6px;">🧰 Tools</div>
+    <div style="display:grid;gap:6px;">
+      <button id="btn-process-colors"
+      style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
+         background:#b71c1c;color:#fff;font-size:12px;cursor:pointer;">
+        🔴 Nur rote Einsätze
+      </button>
 
-      <div style="display:grid;gap:6px;">
-
-        <button id="btn-process-colors"
-          style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
-                 background:#b71c1c;color:#fff;font-size:12px;cursor:pointer;">
-          🔴 Nur rote Einsätze
-        </button>
-
-        <button id="btn-quick-2x30"
-          style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
-                 background:#3E1BD3;color:#fff;font-size:12px;cursor:pointer;">
-          1) Verbandfreigabe <br>
-          2) Fehlende Fahrzeuge <br>
-        </button>
-        <!-- 🔴 direkt darunter -->
-        <button id="btn-tool-3"
-        style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
-         background:#c62828;color:#fff;font-size:12px;cursor:pointer;font-weight:700;">
-         🚨 Chat senden + Alarm & weiter
-         </button>
-        <!-- ✅ t4: Min-Credits Toggle -->
-        <button id="btn-tool-4"
-          style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
-                 background:#424242;color:#fff;font-size:14px;cursor:pointer;">
-          💰 Min-Credits: AUS
-        </button>
-        <!-- ✅ Min-Credits Wert -->
-        <label style="font-size:12px;opacity:.85;margin-top:2px;">Min-Credits</label>
-        <input id="aao-mincred-input" type="number" min="0" step="250"
-          value="5000"
-          style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#1e1e1e;color:#fff;">
-
-
-
-        <button id="btn-abort-info">ℹ️ Abbruch-Info: AN</button>
-
-
-      </div>
+     <button id="btn-quick-2x30"
+      style="margin-bottom:6px;padding:6px 8px;border-radius:6px;
+      background:#3E1BD3;color:#fff;font-size:12px;cursor:pointer;">
+      1 x Verbandfreigabe - 2x Fehlende Fahrzeuge posten
+     </button>
+      <button id="btn-tool-3">🧪 Aktion 3</button>
     </div>
   </div>
+</div>
 
 `;
 
@@ -1656,7 +1508,7 @@ box.querySelector('#maxReloadsInput').addEventListener('change', (e) => {
     if (!isNaN(val) && val > 0) {
         window.MAX_RELOADS = val;
         console.log('MAX_RELOADS gesetzt auf:', val);
-        lblStatus.textContent = `MAX_RELOADS: ${val}`;
+        lblStatus.textContent = MAX_RELOADS: ${val};
     }
 });
 
@@ -1670,8 +1522,6 @@ const bClose    = box.querySelector('#btn-close');
 const bDet      = box.querySelector('#aao-toggle-details');
 const detBox    = box.querySelector('#aao-details');
 const bQuick2x30 = box.querySelector('#btn-quick-2x30');
-
-
 
 // ✅ NEU: Missing-Liste befüllen (nur wenn was fehlt)
 // ✅ NEU: Missing-Button + Box
@@ -1717,11 +1567,6 @@ if (bQuick2xHLF) {
   });
 }
 
-
-
-
-// *** UI HELPER ***
-
     // 🔘 Einsatzfarben-Schalter
 const bProcessColors = box.querySelector('#btn-process-colors');
 
@@ -1736,25 +1581,10 @@ const updateProcessColorBtn = () => {
   }
 };
 
-    function updateAbortInfoToolBtn() {
-  const btn = document.querySelector('#btn-abort-info');
-  if (!btn) return;
-
-  btn.textContent = `⛔ Abbruch-Info: ${window.AAO_ABORT_INFO_ON ? 'AN' : 'AUS'}`;
-  btn.style.background = window.AAO_ABORT_INFO_ON ? '#2e7d32' : '#424242';
-  btn.style.color = '#fff';
-}
-
-
-// =========================
-// ✅ TOOLS / EVENTS (einmalig, sauber)
-// =========================
-
-// Farben-Button initial + Toggle
+// Initial anzeigen
 updateProcessColorBtn();
 
-if (bProcessColors && !bProcessColors.dataset.bound) {
-  bProcessColors.dataset.bound = '1';
+if (bProcessColors) {
   bProcessColors.onclick = () => {
     window.AAO_PROCESS_ALL_COLORS = !window.AAO_PROCESS_ALL_COLORS;
     updateProcessColorBtn();
@@ -1762,75 +1592,42 @@ if (bProcessColors && !bProcessColors.dataset.bound) {
   };
 }
 
-// Tool-Refs
 const t2 = box.querySelector('#btn-tool-2');
 const t3 = box.querySelector('#btn-tool-3');
+
+    const t4 = box.querySelector('#btn-tool-4');
 const minCredInput = box.querySelector('#aao-mincred-input');
-const t4 = box.querySelector('#btn-tool-4');
 
-    // 🔔 Info bei Abbruch anzeigen (Default AN)
-window.AAO_ABORT_INFO_ON = localStorage.getItem('aao_abort_info_on') !== '0';
-
-const tInfo = box.querySelector('#btn-abort-info');
-if (tInfo && !tInfo.dataset.bound) {
-  tInfo.dataset.bound = '1';
-  const paint = () => {
-    tInfo.textContent = `ℹ️ Abbruch-Info: ${window.AAO_ABORT_INFO_ON ? 'AN' : 'AUS'}`;
-    tInfo.style.background = window.AAO_ABORT_INFO_ON ? '#2e7d32' : '#424242';
-  };
-  paint();
-  tInfo.onclick = () => {
-    window.AAO_ABORT_INFO_ON = !window.AAO_ABORT_INFO_ON;
-    localStorage.setItem('aao_abort_info_on', window.AAO_ABORT_INFO_ON ? '1' : '0');
-    paint();
+if (minCredInput) {
+  minCredInput.onchange = () => {
+    const v = parseInt(minCredInput.value, 10);
+    window.AAO_MINCRED_VAL = Number.isFinite(v) ? Math.max(0, v) : 5000;
+    localStorage.setItem('aao_mincred_val', String(window.AAO_MINCRED_VAL));
+    if (lblStatus) lblStatus.textContent = 💰 Min-Credits gesetzt: ${window.AAO_MINCRED_VAL};
   };
 }
 
-    const tAbortInfo = box.querySelector('#btn-abort-info');
-
-if (tAbortInfo && !tAbortInfo.dataset.bound) {
-  tAbortInfo.dataset.bound = '1';
-
-  // initial anzeigen
-  updateAbortInfoToolBtn();
-
-  // Klick = umschalten
-  tAbortInfo.onclick = () => {
-    window.AAO_ABORT_INFO_ON = !window.AAO_ABORT_INFO_ON;
-    localStorage.setItem(
-      'aao_abort_info_on',
-      window.AAO_ABORT_INFO_ON ? '1' : '0'
-    );
-    updateAbortInfoToolBtn();
+if (t4) {
+  t4.onclick = () => {
+    window.AAO_MINCRED_ON = !window.AAO_MINCRED_ON;
+    localStorage.setItem('aao_mincred_on', window.AAO_MINCRED_ON ? '1' : '0');
+    t4.textContent = 💰 Min-Credits: ${window.AAO_MINCRED_ON ? 'AN' : 'AUS'};
+    t4.style.background = window.AAO_MINCRED_ON ? '#2e7d32' : '#424242';
+    if (lblStatus) lblStatus.textContent = window.AAO_MINCRED_ON
+      ? 💰 Filter aktiv: < ${window.AAO_MINCRED_VAL} wird übersprungen
+      : '💰 Filter aus';
   };
 }
 
+if (t2) t2.onclick = () => { if (lblStatus) lblStatus.textContent = '⚡ Tool 2 geklickt'; };
 
-// ✅ Tool 2 = Chat vorbereiten
-if (t2) {
-  // Optik immer setzen (harmlos, auch bei Re-Render)
-  t2.textContent = 'Chat senden & weiter';
-  t2.style.background = '#3E1BD3';
-  t2.style.color = '#fff';
-  t2.style.fontWeight = '700';
-  t2.style.border = '0';
-  t2.style.borderRadius = '6px';
-  t2.style.padding = '6px 8px';
-  t2.style.cursor = 'pointer';
-
-  t2.onmouseenter = () => t3.style.background = '#b71c1c';
-  t2.onmouseleave = () => t3.style.background = '#3E1BD3';
-
-    if (t2 && !t2.dataset.bound) {
-  t2.dataset.bound = '1';
-  t2.onclick = () => { if (lblStatus) lblStatus.textContent = '⚡ Tool 2 geklickt'; };
-}
-}
+// ✅ Tool 3 = Alarmieren & weiter (immer im aktiven Missions-IFrame)
 // ✅ Tool 3 = Chat absenden (wenn vorhanden) + Alarmieren & weiter
 if (t3) {
-  // Optik immer setzen (harmlos, auch bei Re-Render)
-  t3.textContent = 'Chat senden & weiter';
-  t3.style.background = '#3E1BD3';
+  t3.textContent = '🚨 Chat + Alarm & weiter';
+
+  // 🔥 Optik für Tool 3 (Gefahr / Aktion!)
+  t3.style.background = '#c62828';   // kräftiges Rot
   t3.style.color = '#fff';
   t3.style.fontWeight = '700';
   t3.style.border = '0';
@@ -1839,109 +1636,60 @@ if (t3) {
   t3.style.cursor = 'pointer';
 
   t3.onmouseenter = () => t3.style.background = '#b71c1c';
-  t3.onmouseleave = () => t3.style.background = '#3E1BD3';
+  t3.onmouseleave = () => t3.style.background = '#c62828';
 
-  // Click nur 1x binden
-  if (!t3.dataset.bound) {
-    t3.dataset.bound = '1';
+  t3.onclick = () => withLock(async () => {
+    const d = getActiveMissionDoc?.() || doc;
 
-    t3.onclick = () => withLock(async () => {
-      const d = getActiveMissionDoc?.() || doc;
+    if (lblStatus) lblStatus.textContent = '📨 Sende Chat (wenn vorhanden)…';
 
-      if (lblStatus) lblStatus.textContent = '📨 Sende Chat (wenn vorhanden)…';
+    // 1) Chat absenden, wenn Feld da ist
+    const field =
+      d?.querySelector('#mission_reply_content') ||
+      window.top?.document?.querySelector('#mission_reply_content');
 
-      // 1) Chat absenden, wenn Feld da ist
-      const field =
-        d?.querySelector('#mission_reply_content') ||
-        window.top?.document?.querySelector('#mission_reply_content');
+    if (field) {
+      const form = field.closest('form');
 
-      if (field) {
-        const form = field.closest('form');
+      // Button "Absenden" suchen
+      const submitBtn =
+        form?.querySelector('button[type="submit"], input[type="submit"]') ||
+        field.parentElement?.querySelector('.input-group-addon button[type="submit"]') ||
+        d?.querySelector('.input-group-addon button[type="submit"]') ||
+        window.top?.document?.querySelector('.input-group-addon button[type="submit"]');
 
-        const submitBtn =
-          form?.querySelector('button[type="submit"], input[type="submit"]') ||
-          field.parentElement?.querySelector('.input-group-addon button[type="submit"]') ||
-          d?.querySelector('.input-group-addon button[type="submit"]') ||
-          window.top?.document?.querySelector('.input-group-addon button[type="submit"]');
-
-        const txt = ('value' in field ? field.value : (field.textContent || '')).trim();
-
-        if (txt.length > 0) {
-          try {
-            if (submitBtn) submitBtn.click();
-            else if (form?.requestSubmit) form.requestSubmit();
-            else if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            if (lblStatus) lblStatus.textContent = '📨 Chat gesendet. 🚨 Alarmiere…';
-          } catch (e) {
-            console.warn('[AAO] Chat-Submit fehlgeschlagen:', e);
-            if (lblStatus) lblStatus.textContent = '⚠️ Chat-Submit fehlgeschlagen. 🚨 Alarmiere trotzdem…';
-          }
-          await new Promise(r => setTimeout(r, 250));
-        } else {
-          if (lblStatus) lblStatus.textContent = 'ℹ️ Chat leer – alarmiere ohne Chat…';
+      // Nur absenden, wenn wirklich Text drinsteht
+      const txt = ('value' in field ? field.value : (field.textContent || '')).trim();
+      if (txt.length > 0) {
+        try {
+          if (submitBtn) submitBtn.click();
+          else if (form?.requestSubmit) form.requestSubmit();
+          else if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          if (lblStatus) lblStatus.textContent = '📨 Chat gesendet. 🚨 Alarmiere…';
+        } catch (e) {
+          console.warn('[AAO] Chat-Submit fehlgeschlagen:', e);
+          if (lblStatus) lblStatus.textContent = '⚠️ Chat-Submit fehlgeschlagen. 🚨 Alarmiere trotzdem…';
         }
+
+        // kurze Luft zum Verarbeiten im UI
+        await new Promise(r => setTimeout(r, 250));
       } else {
-        if (lblStatus) lblStatus.textContent = 'ℹ️ Kein Chatfeld – alarmiere…';
+        if (lblStatus) lblStatus.textContent = 'ℹ️ Chat leer – alarmiere ohne Chat…';
       }
+    } else {
+      if (lblStatus) lblStatus.textContent = 'ℹ️ Kein Chatfeld – alarmiere…';
+    }
 
-      // 2) Alarm & weiter klicken
-      const btn =
-        d?.querySelector('a.alert_next') ||
-        window.top?.document?.querySelector('a.alert_next');
+    // 2) Alarm & weiter klicken
+    const btn = d?.querySelector('a.alert_next') || window.top?.document?.querySelector('a.alert_next');
+    if (!btn) {
+      if (lblStatus) lblStatus.textContent = '⚠️ Alarm & weiter nicht gefunden.';
+      console.warn('[AAO] alert_next nicht gefunden (Tool3)');
+      return;
+    }
 
-      if (!btn) {
-        if (lblStatus) lblStatus.textContent = '⚠️ Alarm & weiter nicht gefunden.';
-        console.warn('[AAO] alert_next nicht gefunden (Tool3)');
-        return;
-      }
-
-      try { btn.click(); } catch (e) { console.warn('[AAO] alert_next click failed', e); }
-    });
-  }
-}
-
-    // ✅ MinCredits: UI initialisieren (Wert + Buttonzustand)
-if (minCredInput) {
-  // initialer Wert im Feld
-  minCredInput.value = String(window.AAO_MINCRED_VAL ?? 5000);
-
-  // Event nur 1x binden
-  if (!minCredInput.dataset.bound) {
-    minCredInput.dataset.bound = '1';
-    minCredInput.onchange = () => {
-      const v = parseInt(minCredInput.value, 10);
-      window.AAO_MINCRED_VAL = Number.isFinite(v) ? Math.max(0, v) : 5000;
-      localStorage.setItem('aao_mincred_val', String(window.AAO_MINCRED_VAL));
-      if (lblStatus) lblStatus.textContent = `💰 Min-Credits gesetzt: ${window.AAO_MINCRED_VAL}`;
-    };
-  }
-}
-
-if (t4) {
-  // initialer Zustand Button (Text/Farbe)
-  t4.textContent = `💰 Min-Credits: ${window.AAO_MINCRED_ON ? 'AN' : 'AUS'}`;
-  t4.style.background = window.AAO_MINCRED_ON ? '#2e7d32' : '#424242';
-  t4.style.color = '#fff';
-  t4.style.border = '0';
-  t4.style.borderRadius = '6px';
-  t4.style.padding = '6px 8px';
-  t4.style.cursor = 'pointer';
-
-  // Event nur 1x binden
-  if (!t4.dataset.bound) {
-    t4.dataset.bound = '1';
-    t4.onclick = () => {
-      window.AAO_MINCRED_ON = !window.AAO_MINCRED_ON;
-      localStorage.setItem('aao_mincred_on', window.AAO_MINCRED_ON ? '1' : '0');
-
-      t4.textContent = `💰 Min-Credits: ${window.AAO_MINCRED_ON ? 'AN' : 'AUS'}`;
-      t4.style.background = window.AAO_MINCRED_ON ? '#2e7d32' : '#424242';
-
-      if (lblStatus) lblStatus.textContent = window.AAO_MINCRED_ON
-        ? `💰 Filter aktiv: < ${window.AAO_MINCRED_VAL} wird übersprungen`
-        : '💰 Filter aus';
-    };
-  }
+    try { btn.click(); } catch (e) { console.warn('[AAO] alert_next click failed', e); }
+  });
 }
 
 if (bMiss && missBox && missingEntries.length) {
@@ -1952,7 +1700,7 @@ if (bMiss && missBox && missingEntries.length) {
     '<ul style="margin:4px 0 0 16px;padding:0;">' +
     missingEntries
       .sort((a,b)=> (+a[0])-(+b[0]))
-      .map(([tid,c]) => `<li>${c}× ${typeName(+tid)} <span style="opacity:.7">(Typ ${tid})</span></li>`)
+      .map(([tid,c]) => <li>${c}× ${typeName(+tid)} <span style="opacity:.7">(Typ ${tid})</span></li>)
       .join('') +
     '</ul>';
 
@@ -1988,7 +1736,7 @@ if (bMiss && missBox) {
     if (enabled) el.style.cssText = el.style.cssText.replace(btnDisabled, '');
   };
 
-  const canAlertNext = !!findInDocOrTop('a.alert_next');
+  const canAlertNext         = !!findInDocOrTop('a.alert_next');
   const canAlertNextAlliance = !!findInDocOrTop('a.alert_next_alliance');
   const canNextMission = (() => {
     const el = findInDocOrTop('#mission_next_mission_btn');
@@ -2025,7 +1773,7 @@ if (bChat) {
     const start = Date.now();
     const tick = async () => {
       const pending = sessionStorage.getItem('aao_share_pending');
-      const thisId = getMissionId(doc);
+      const thisId  = getMissionId(doc);
 
       // wenn Mission gewechselt → abbrechen
       if (!pending || !thisId || pending !== thisId) {
@@ -2081,7 +1829,6 @@ if (bChat) {
 
   tick();
 })();
-
 
   // ── Bestehende Buttons ──────────────────────────────────────
   if (bAlarm) {
@@ -2182,7 +1929,6 @@ if (bQuick2x30) {
   });
 }
 
-
 /*
   // ── Auto/Schwelle ───────────────────────────────────────────
   const AUTO_KEY   = 'aao_auto_dispatch';
@@ -2194,14 +1940,14 @@ if (bQuick2x30) {
   })();
 
   const ctrl = box.querySelector('#aao-ctrl-row');
-  ctrl.innerHTML = `
+  ctrl.innerHTML = 
     <button id="btn-auto"  style="${btnBase}background:#ffb300;color:#000;flex:0 0 auto;min-width:90px;"></button>
     <div style="display:flex;gap:4px;align-items:center;">
       <button id="aao-threshold-minus" style="${btnBase}background:#555;">–100</button>
       <span id="aao-threshold-label" style="opacity:.85;min-width:90px;text-align:center;">Verband: ${currentThreshold}</span>
       <button id="aao-threshold-plus"  style="${btnBase}background:#555;">+100</button>
     </div>
-  `;
+  ;
   const bAuto  = ctrl.querySelector('#btn-auto');
   const minus  = ctrl.querySelector('#aao-threshold-minus');
   const plus   = ctrl.querySelector('#aao-threshold-plus');
@@ -2263,12 +2009,10 @@ const focusByCredits = () => {
 };
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(()=>focusByCredits()); else setTimeout(focusByCredits,0);
 */
-
-    // ── Auto/Schwelle ───────────────────────────────────────────
+  // ── Auto/Schwelle ───────────────────────────────────────────
   // RAUS: Auto-Button + Schwelle + Auto-Klick-Logik
   const ctrl = box.querySelector('#aao-ctrl-row');
   if (ctrl) ctrl.remove();   // oder: ctrl.innerHTML = '';
-
 
   // ENTER-Komfort
   if (!box.dataset.enterHooked) {
@@ -2294,412 +2038,35 @@ const focusByCredits = () => {
 }
 
 function waitForVehicleListUpdate(doc, callback, timeout = 10000) {
-  const oldCount = doc.querySelectorAll('tr.vehicle_select_table_tr').length;
-  const start = Date.now();
+    // Merke dir, wie viele Fahrzeuge JETZT da sind
+    const oldCount = doc.querySelectorAll('tr.vehicle_select_table_tr').length;
+    const start = Date.now();
 
-  function check() {
-    const newCount = doc.querySelectorAll('tr.vehicle_select_table_tr').length;
-    if (newCount !== oldCount && newCount > 0) { callback(); return; }
-    if (Date.now() - start > timeout) { callback(); return; }
-    setTimeout(check, 100);
-  }
-  check();
-}
-
-function parseAvgCreditsFromHelpDoc(helpDoc) {
-  if (!helpDoc) return 0;
-
-  // genau deine Tabelle suchen
-  const table = [...helpDoc.querySelectorAll('div.col-md-4 table')]
-    .find(t => (t.querySelector('th')?.textContent || '').includes('Belohnung und Voraussetzungen'));
-  if (!table) return 0;
-
-  const row = [...table.querySelectorAll('tbody tr')].find(tr =>
-    /credits im durchschnitt/i.test(tr.children?.[0]?.textContent || '')
-  );
-  if (!row) return 0;
-
-  const raw = (row.children?.[1]?.textContent || '').trim();
-  const num = parseInt(raw.replace(/\D/g, ''), 10);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function getMissionHelpUrlFromMissionDoc(mdoc) {
-  const a = mdoc.querySelector('#mission_help');
-  return a?.href || '';
-}
-
-// lädt Hilfe (unsichtbar), gibt credits zurück, räumt iframe wieder weg
-function getAvgCreditsViaHelp(mdoc, timeout = 9000) {
-  return new Promise((resolve) => {
-    const url = getMissionHelpUrlFromMissionDoc(mdoc);
-    if (!url) return resolve(0);
-
-    const fr = document.createElement('iframe');
-    fr.style.display = 'none';
-    fr.src = url;
-    document.body.appendChild(fr);
-
-    const done = (val) => {
-      try { document.body.removeChild(fr); } catch {}
-      resolve(val || 0);
-    };
-
-    const to = setTimeout(() => done(0), timeout);
-
-    fr.onload = () => {
-      try {
-        const hd = fr.contentDocument || fr.contentWindow?.document;
-        // mini-delay, weil LSS manchmal nachrendert
-        setTimeout(() => {
-          clearTimeout(to);
-          done(parseAvgCreditsFromHelpDoc(hd));
-        }, 150);
-      } catch {
-        clearTimeout(to);
-        done(0);
-      }
-    };
-  });
-}
-
-// 💰 MinCredits-Check (async, weil Hilfeseite ggf. geladen werden muss)
-async function applyMinCreditsFilterAsync(mdoc) {
-  if (!window.AAO_MINCRED_ON) return false;
-
-  const min = Number(window.AAO_MINCRED_VAL || 0);
-
-  // MissionTypeId bestimmen (stabil)
-  const missionTypeId =
-    mdoc.querySelector('#mission_general_info')?.getAttribute('data-mission-type') ||
-    mdoc.querySelector('[data-mission-type]')?.getAttribute('data-mission-type') ||
-    null;
-
-  // 1️⃣ Cache-Hit → SOFORT
-  if (missionTypeId && window.__AAO_CREDIT_CACHE__[missionTypeId]) {
-    const cached = window.__AAO_CREDIT_CACHE__[missionTypeId];
-    if (cached < min) {
-      console.log(`💰 Skip (Cache): ${cached} < ${min}`);
-      skipMissionFast(mdoc);
-      return true;
+    function check() {
+        const newCount = doc.querySelectorAll('tr.vehicle_select_table_tr').length;
+        // Sobald die Liste länger ist (oder ganz leer und wird dann befüllt), geht's weiter
+        if (newCount !== oldCount && newCount > 0) {
+            callback();
+            return;
+        }
+        if (Date.now() - start > timeout) {
+            // Sicherheit: nach x Sekunden trotzdem weiter
+            callback();
+            return;
+        }
+        setTimeout(check, 100); // alle 100ms checken
     }
-    return false;
-  }
-
-  // 2️⃣ Kein Cache → einmal Hilfe laden
-  const c = await getAvgCreditsViaHelp(mdoc);
-
-  // nix gefunden → nicht skippen
-  if (!c) return false;
-
-  // Cache setzen
-  if (missionTypeId) {
-    window.__AAO_CREDIT_CACHE__[missionTypeId] = c;
-    console.log(`💾 Cache Credits: Mission ${missionTypeId} → ${c}`);
-  }
-
-  // vergleichen
-  if (c < min) {
-    console.log(`💰 Skip (Hilfe): ${c} < ${min}`);
-    skipMissionFast(mdoc);
-    return true;
-  }
-
-  return false;
+    check();
 }
 
-function skipMissionFast(mdoc, timeout = 1800) {
-  const t0 = Date.now();
+function injectLogic(iframe) {
+    if (typeof iframe._reloadAttempts === "undefined") iframe._reloadAttempts = 0;
+//    const MAX_RELOADS = 2; // nach Wunsch
 
-  (function tryNext() {
-    const nextBtn =
-      mdoc.querySelector('#mission_next_mission_btn') ||
-      window.top?.document?.querySelector('#mission_next_mission_btn');
-
-    const enabled =
-      nextBtn &&
-      nextBtn.getAttribute('href') &&
-      nextBtn.getAttribute('href') !== '#' &&
-      !nextBtn.classList.contains('btn-default');
-
-    if (enabled) {
-      try { nextBtn.click(); } catch {}
-      return; // ✅ IFrame bleibt, GUI bleibt (wird neu gerendert)
-    }
-
-    if (Date.now() - t0 < timeout) {
-      setTimeout(tryNext, 120);
-      return;
-    }
-
-    // Fallback erst nach Timeout: schließen
-    const closeBtn =
-      window.top?.document?.getElementById('lightbox_close_inside') ||
-      window.top?.document?.querySelector('.lightbox_close, button.close, .close') ||
-      mdoc.getElementById('lightbox_close_inside') ||
-      mdoc.querySelector('.lightbox_close, button.close, .close');
-
-    try { closeBtn?.click(); } catch {}
-  })();
-}
-const CREDIT_CACHE_KEY = 'aao_credit_cache_v1';
-
-function loadCreditCache() {
-  try { return JSON.parse(localStorage.getItem(CREDIT_CACHE_KEY) || '{}'); }
-  catch { return {}; }
-}
-
-function saveCreditCache(cache) {
-  try { localStorage.setItem(CREDIT_CACHE_KEY, JSON.stringify(cache)); } catch {}
-}
-
-window.__AAO_CREDIT_CACHE__ = window.__AAO_CREDIT_CACHE__ || loadCreditCache();
-
-function cacheGetCredit(missionTypeId) {
-  if (!missionTypeId) return 0;
-  const v = window.__AAO_CREDIT_CACHE__[missionTypeId];
-  return Number.isFinite(v) ? v : 0;
-}
-
-function cacheSetCredit(missionTypeId, credits) {
-  if (!missionTypeId || !credits) return;
-  window.__AAO_CREDIT_CACHE__[missionTypeId] = credits;
-  saveCreditCache(window.__AAO_CREDIT_CACHE__);
-}
-
-async function shouldSkipByMinCredits(mdoc) {
-  if (!window.AAO_MINCRED_ON) return false;
-
-  const min = Number(window.AAO_MINCRED_VAL || 0);
-
-  // MissionTypeId stabil holen
-  const missionTypeId =
-    mdoc.querySelector('#mission_general_info')?.getAttribute('data-mission-type') ||
-    mdoc.querySelector('[data-mission-type]')?.getAttribute('data-mission-type') ||
-    '';
-
-  // 1) Cache hit -> sofort
-  const cached = cacheGetCredit(missionTypeId);
-  if (cached > 0) return cached < min;
-
-  // 2) Cache miss -> Hilfe laden (einmal)
-  const c = await getAvgCreditsViaHelp(mdoc, 4500);
-  if (c > 0) {
-    cacheSetCredit(missionTypeId, c);
-    return c < min;
-  }
-
-  // wenn nix gefunden -> NICHT skippen
-  return false;
-}
-
-function abortAndReturnToMain(reason = '') {
-  console.warn('[AAO] ABBRUCH:', reason);
-
-  // 🔒 globaler Abbruch
-  window.AAO_ABORTED = true;
-  window.AAO_RUNNING = false;
-
-// 🔔 ZENTRALE Abbruch-Info (abschaltbar)
-if (window.AAO_ABORT_INFO_ON) {
-  const overlay = document.createElement('div');
-  overlay.id = 'aao-abort-overlay';
-
-  overlay.innerHTML = `
-    <div style="font-size:22px;margin-bottom:12px;">⛔ Einsatz unter Mindestwert</div>
-    <div style="font-size:16px;opacity:.9;margin-bottom:16px;">
-      ${reason}<br>
-      Rückkehr zur Hauptübersicht
-    </div>
-
-    <label style="font-size:13px;display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:16px;cursor:pointer;">
-      <input type="checkbox" id="aao-abort-hide-check">
-      Diese Meldung nicht mehr anzeigen
-    </label>
-
-    <button id="aao-abort-ok-btn"
-      style="
-        padding:10px 18px;
-        font-size:16px;
-        font-weight:700;
-        border-radius:10px;
-        border:0;
-        cursor:pointer;
-        background:#fff;
-        color:#b71c1c;
-      ">
-      OK
-    </button>
-  `;
-
-  Object.assign(overlay.style, {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    background: '#b71c1c',
-    color: '#fff',
-    padding: '26px 32px',
-    borderRadius: '16px',
-    textAlign: 'center',
-    zIndex: 1000000,
-    boxShadow: '0 10px 40px rgba(0,0,0,.6)',
-    maxWidth: '85vw'
-  });
-
-  document.body.appendChild(overlay);
-
-  // Klick-Logik
-  overlay.querySelector('#aao-abort-ok-btn').onclick = () => {
-    const hide = overlay.querySelector('#aao-abort-hide-check')?.checked;
-    if (hide) {
-      window.AAO_ABORT_INFO_ON = false;
-      localStorage.setItem('aao_abort_info_on', '0');
-      updateAbortInfoToolBtn?.(); // Tools-Menü sync (falls vorhanden)
-    }
-    overlay.remove();
-
-    // 🏠 Erst JETZT zurück zur Hauptseite
-    setTimeout(() => {
-      try { window.top.location.href = '/'; } catch {}
-    }, 100);
-  };
-
-  return; // ⛔ ganz wichtig: KEIN Auto-Weiter
-}
-
-
-  // Lightbox schließen
-  const closeBtn =
-    window.top?.document?.getElementById('lightbox_close_inside') ||
-    window.top?.document?.querySelector('.lightbox_close, button.close, .close');
-  try { closeBtn?.click(); } catch {}
-
-  // 🏠 WICHTIG: aktiv zurück zur Hauptseite
-  setTimeout(() => {
-    try { window.top.location.href = '/'; } catch {}
-  }, 300);
-
-
-  console.warn('[AAO] Bot vollständig gestoppt.');
-}
-
-function getMissionKeyFromDoc(d) {
-  const mid =
-    d.querySelector('#mission_alliance_share_btn')?.href?.match(/\/missions\/(\d+)\//)?.[1] ||
-    d.querySelector('[id^="mission_bar_holder_"]')?.id?.match(/(\d+)$/)?.[1] ||
-    d.querySelector('a[href*="/missions/"]')?.href?.match(/\/missions\/(\d+)\b/)?.[1] ||
-    null;
-
-  const type =
-    d.querySelector('#mission_general_info')?.getAttribute('data-mission-type') ||
-    d.querySelector('[data-mission-type]')?.getAttribute('data-mission-type') ||
-    '';
-
-  return mid ? `mid:${mid}` : `type:${type}`;
-}
-
-function installMissionChangeWatcher(iframe) {
-  if (!iframe || iframe.dataset.missionWatch === '1') return;
-  iframe.dataset.missionWatch = '1';
-
-  const d = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!d || !d.body) return;
-
-  iframe.dataset.lastMissionKey = getMissionKeyFromDoc(d);
-
-  let t = null;
-  const trigger = () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-
-      const nowKey = getMissionKeyFromDoc(doc);
-      const oldKey = iframe.dataset.lastMissionKey || '';
-
-      if (nowKey && nowKey !== oldKey) {
-        iframe.dataset.lastMissionKey = nowKey;
-        iframe._reloadAttempts = 0;
-
-        try { injectLogic(iframe); }
-        catch (e) { console.warn('[AAO] injectLogic re-run failed', e); }
-      }
-    }, 350);
-  };
-
-  const mo = new MutationObserver(trigger);
-  mo.observe(d.body, { childList: true, subtree: true, attributes: true });
-
-  iframe._missionMo = mo;
-}
-
-function autoCollectEasterEggEarly(doc) {
-  const egg = doc?.querySelector?.('#easter-egg-link');
-  if (!egg) return false;
-
-  console.log('🥚 EasterEgg gefunden – einsammeln!');
-  try { egg.click(); } catch {}
-
-  try {
-    const claimUrl = egg.href?.replace('_sync', '');
-    if (claimUrl) fetch(claimUrl, { method: 'POST' }).catch(() => {});
-  } catch {}
-
-  return true;
-}
-
-
-// =========================
-// ✅ injectLogic (MIT MinCredits Check) + Mission-Wechsel Watcher
-// =========================
-async function injectLogic(iframe) {
-  if (window.AAO_ABORTED) return;
-
-  if (iframe._injectRunning) return;
-  iframe._injectRunning = true;
-
-  try {
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    // 0️⃣ doc holen und Guard
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
     if (!doc) return;
-
-    installMissionChangeWatcher(iframe);
-
-    // Mission-Wechsel (zur Sicherheit)
-    const k = getMissionKeyFromDoc(doc);
-    if (k && iframe.dataset.lastMissionKey !== k) {
-      iframe.dataset.lastMissionKey = k;
-      iframe._reloadAttempts = 0;
-    }
-
-    // 🥚 immer zuerst
-    autoCollectEasterEggEarly(doc);
-
-    // 🚑 Patienten-Nachalarm SOFORT
-    try {
-      const did = handlePatientNachalarm(doc);
-      if (did) return;
-    } catch (e) {
-      console.warn('[AAO] Patienten-Nachalarm Fehler:', e);
-    }
-
-    // 💰 MinCredits (nur prüfen; abortAndReturnToMain macht "Stop")
-    if (window.AAO_MINCRED_ON) {
-      const missionTypeId =
-        doc.querySelector('#mission_general_info')?.getAttribute('data-mission-type') || '';
-
-      let credits = cacheGetCredit(missionTypeId);
-
-      if (!credits) {
-        credits = await getAvgCreditsViaHelp(doc, 4000);
-        if (credits > 0) cacheSetCredit(missionTypeId, credits);
-      }
-
-      if (credits > 0 && credits < Number(window.AAO_MINCRED_VAL || 0)) {
-        abortAndReturnToMain(`Nächster Einsatz ${credits} < ${window.AAO_MINCRED_VAL}`);
-        return;
-      }
-    }
+    window._reloadAttempted = false;
 
     // 1️⃣ Einsatzfarbe bestimmen & ggf. überspringen
     const color = getMissionColor(doc);
@@ -2710,277 +2077,300 @@ async function injectLogic(iframe) {
     if (!color) colorText = 'Einsatzstatus nicht erkennbar!';
     console.log(colorText);
 
-    // Sprechwunsch-Handling: Falls einer da, komplette Abarbeitung starten!
-    const sprechwunschBtn = [...doc.querySelectorAll('.alert.alert-danger a.btn-success')]
-      .find(btn => (btn.textContent || '').includes('Sprechwunsch bearbeiten'));
-    if (sprechwunschBtn) {
-      console.log('📣 Sprechwunsch erkannt! Starte komplette Sprechwunsch-Abarbeitung...');
-      processAllPatientRequests(doc);
-      return;
+    // 3️⃣ Patienten-Nachalarm zuerst behandeln
+    if (handlePatientNachalarm(doc)) {
+        return;
     }
 
-    // Polizeisprechwunsch-Buttons direkt im Alert?
+// 🟥🟨🟩 Farb-Filter
+if (!window.AAO_PROCESS_ALL_COLORS && (color === 'gelb' || color === 'gruen')) {
+  const nextBtn = doc.getElementById('mission_next_mission_btn')
+               || doc.querySelector('#mission_next_mission_btn');
+
+  if (nextBtn) {
+    const isDisabled =
+      nextBtn.classList.contains('btn-default') ||
+      nextBtn.getAttribute('href') === '#';
+
+    if (isDisabled) {
+      const closeBtn =
+        doc.getElementById('lightbox_close_inside') ||
+        doc.querySelector('button.close, .close');
+      closeBtn?.click();
+    } else {
+      nextBtn.click();
+    }
+  }
+
+  console.log(⏭️ Einsatz ${color} übersprungen (Nur-Rot-Modus));
+  return;
+}
+
+    // EasterEgg-Collector: falls ein Sammelobjekt angezeigt wird, automatisch einsammeln
+(function autoCollectEasterEgg() {
+  const egg = doc.querySelector('#easter-egg-link');
+  if (!egg) return; // nix da → nix tun
+
+  console.log('🥚 EasterEgg gefunden – versuche Klick:', egg.href);
+  // Variante 1: echtes Klick-Event
+  egg.click();
+
+  // Variante 2 (Fallback): POST direkt absetzen
+  const claimUrl = egg.href.replace('_sync',''); // → …/claim_found_object
+  fetch(claimUrl, { method: 'POST' })
+    .then(r => r.text())
+    .then(txt => {
+      console.log('🥚 EasterEgg eingesammelt!', txt.slice(0,80));
+      // im UI wie das Originalscript das Link-Element verstecken
+      egg.style.display = 'none';
+    })
+    .catch(err => console.warn('🥚 EasterEgg claim fehlgeschlagen:', err));
+})();
+
+    // Sprechwunsch-Handling: Falls einer da, komplette Abarbeitung starten!
+const sprechwunschBtn = [...doc.querySelectorAll('.alert.alert-danger a.btn-success')]
+    .find(btn => btn.textContent.includes('Sprechwunsch bearbeiten'));
+if (sprechwunschBtn) {
+    console.log('📣 Sprechwunsch erkannt! Starte komplette Sprechwunsch-Abarbeitung...');
+    processAllPatientRequests(doc);
+    return; // Nichts anderes mehr tun!
+}
+
+    // 2. Polizeisprechwunsch-Button direkt im Sprechwunsch-Bereich?
     const policeAlertBtns = [...doc.querySelectorAll('.alert.alert-danger a.btn-success[data-prison-id]')];
     if (policeAlertBtns.length > 0) {
-      console.log(`📣 ${policeAlertBtns.length} Polizei-Sprechwunsch(e) erkannt!`);
-      policeAlertBtns[0].click();
-      setTimeout(() => {
-        const polIframe = [...document.querySelectorAll('iframe.lightbox_iframe')]
-          .find(f => f.style.display !== 'none');
-        if (!polIframe) return console.warn('❗ Polizei-IFrame nach Sprechwunsch nicht gefunden!');
-        processAllPrisonerRequests(polIframe, () => setTimeout(() => injectLogic(iframe), 500));
-      }, 700);
-      return;
+        console.log(📣 ${policeAlertBtns.length} Polizei-Sprechwunsch(e) (direkt im Alert) erkannt!);
+        policeAlertBtns[0].click();
+        setTimeout(() => {
+            const polIframe = [...document.querySelectorAll('iframe.lightbox_iframe')].find(f => f.style.display !== 'none');
+            if (!polIframe) {
+                console.warn('❗ Polizei-IFrame nach Sprechwunsch nicht gefunden!');
+                return;
+            }
+            processAllPrisonerRequests(polIframe, () => setTimeout(() => injectLogic(iframe), 500));
+        }, 700);
+        return;
     }
 
-    // Polizeisprechwunsch-Buttons irgendwo im Frame?
+    // 3. Gefangene sollen abtransportiert werden – kein Button im Alert, aber Gefangenen-Buttons irgendwo im Frame?
+    // Suche nach Prison-Buttons IM Frame (z.B. im .prison-select-Container)
     const policeFrameBtns = [...doc.querySelectorAll('a.btn-success[data-prison-id]')];
     if (policeFrameBtns.length > 0) {
-      console.log(`📣 ${policeFrameBtns.length} Polizei-Sprechwunsch(e) (im Frame) erkannt!`);
-      policeFrameBtns[0].click();
-      setTimeout(() => {
-        const polIframe = [...document.querySelectorAll('iframe.lightbox_iframe')]
-          .find(f => f.style.display !== 'none');
-        if (!polIframe) return console.warn('❗ Polizei-IFrame nach Prison-Klick nicht gefunden!');
-        processAllPrisonerRequests(polIframe, () => setTimeout(() => injectLogic(iframe), 500));
-      }, 700);
-      return;
+        console.log(📣 ${policeFrameBtns.length} Polizei-Sprechwunsch(e) (im Frame/Container) erkannt!);
+        policeFrameBtns[0].click();
+        setTimeout(() => {
+            const polIframe = [...document.querySelectorAll('iframe.lightbox_iframe')].find(f => f.style.display !== 'none');
+            if (!polIframe) {
+                console.warn('❗ Polizei-IFrame nach Prison-Klick nicht gefunden!');
+                return;
+            }
+            processAllPrisonerRequests(polIframe, () => setTimeout(() => injectLogic(iframe), 500));
+        }, 700);
+        return;
     }
 
     // 2️⃣ Basisdaten
     const { patienten, gefangene } = extractPatientsAndPrisoners(doc);
     const fehlendeAnforderungen = extractMissingRequirements(doc);
+const einsatzName = doc.querySelector('#missionH1')?.innerText.trim() || '';
+const eingangsZeit = doc.querySelector('#missionH1')?.getAttribute('data-original-title')?.replace(/^.*?:\s*/, '') || '';
+const missionTypeId = doc.querySelector('#mission_general_info')?.getAttribute('data-mission-type') || '';
 
-    const einsatzName = doc.querySelector('#missionH1')?.innerText.trim() || '';
-    const eingangsZeit = doc.querySelector('#missionH1')?.getAttribute('data-original-title')?.replace(/^.*?:\s*/, '') || '';
-    const missionTypeId = doc.querySelector('#mission_general_info')?.getAttribute('data-mission-type') || '';
-
-    // Credits im Durchschnitt aus Haupt-UI (Fallback)
-    let credits = '';
-    const creditNode = [...doc.querySelectorAll('#mission_general_info td, #mission_general_info div, #mission_general_info span')]
-      .find(el => /credits im durchschnitt/i.test(el.textContent));
-    if (creditNode) {
-      const numMatch = creditNode.textContent.match(/([\d.]+)/);
-      if (numMatch) credits = numMatch[1].replace(/\./g, '');
-    }
-
+// Credits im Durchschnitt auslesen
+// Credits im Durchschnitt auslesen
+let credits = '';
+const creditNode = [...doc.querySelectorAll('#mission_general_info td, #mission_general_info div, #mission_general_info span')]
+    .find(el => /credits im durchschnitt/i.test(el.textContent));
+if (creditNode) {
+    const numMatch = creditNode.textContent.match(/([\d.]+)/);
+    if (numMatch) credits = numMatch[1].replace(/\./g, '');
+}
     // 3️⃣ unsichtbares Hilfeskript-Iframe anlegen
     const invisible = document.createElement('iframe');
     invisible.style.display = 'none';
     invisible.src = doc.querySelector('#mission_help')?.href || '';
     document.body.appendChild(invisible);
 
-    invisible.onload = () => {
-      const helpDoc = invisible.contentDocument || invisible.contentWindow?.document;
-      if (!helpDoc) {
-        console.warn('❗ Einsatzhilfe konnte nicht geladen werden.');
-        return;
+invisible.onload = () => {
+  const helpDoc = invisible.contentDocument || invisible.contentWindow.document;
+  if (!helpDoc) {
+    console.warn('❗ Einsatzhilfe konnte nicht geladen werden.');
+    return;
+  }
+
+  // etwas warten, bis die Hilfe wirklich gerendert ist
+  setTimeout(() => {
+    let allOk = false;
+    try {
+      // ── 1) Anforderungen aus der Hilfe ──
+      const hilfeAnforderungen = extractHelpRequirements(helpDoc);
+
+      // ── 2) "Weitere Informationen" (Patienten / Wahrscheinlichkeiten) ──
+      const infoTable = [...helpDoc.querySelectorAll('table')]
+        .find(t => t.querySelector('th') && /weitere informationen/i.test(t.querySelector('th').textContent));
+      const addInfo = {};
+      if (infoTable) {
+        [...infoTable.querySelectorAll('tbody tr')].forEach(tr => {
+          const key = tr.children[0]?.textContent.trim() || '';
+          const value = tr.children[1]?.textContent.trim() || '';
+          if (/Mindest Patientenanzahl/i.test(key)) addInfo.minPatients = parseInt(value, 10);
+          if (/NEF Anforderungswahrscheinlichkeit/i.test(key)) addInfo.nefProb = parseInt(value, 10);
+          if (/RTH Anforderungswahrscheinlichkeit/i.test(key)) addInfo.rthProb = parseInt(value, 10);
+          if (/Tragehilfe Anforderungswahrscheinlichkeit/i.test(key)) addInfo.carryProb = parseInt(value, 10);
+        });
       }
 
-      setTimeout(() => {
-        let allOk = false;
+      // ── 3) Credits aus "Belohnung und Voraussetzungen" ──
+      let credits = '';
+      const belohnungTable = [...helpDoc.querySelectorAll('table')]
+        .find(t => t.querySelector('th') && /belohnung/i.test(t.querySelector('th').textContent));
+      if (belohnungTable) {
+        const creditRow = [...belohnungTable.querySelectorAll('tr')]
+          .find(tr => /credits im durchschnitt/i.test(tr.textContent));
+        if (creditRow) {
+          const val = creditRow.querySelector('td:last-child')?.textContent.trim() || '';
+          credits = val.replace(/\./g, '');
+          console.log(💰 Credits aus Einsatzhilfe: ${credits});
+        }
+      }
+      // Fallback: wenn Hilfe nichts liefert, versuche Haupt-UI
+      if (!credits) {
+        const creditNode = [...doc.querySelectorAll('#mission_general_info td, #mission_general_info div, #mission_general_info span')]
+          .find(el => /credits im durchschnitt/i.test(el.textContent));
+        const numMatch = creditNode?.textContent.match(/([\d.]+)/);
+        if (numMatch) credits = numMatch[1].replace(/\./g, '');
+      }
 
-        try {
-          const hilfeAnforderungen = extractHelpRequirements(helpDoc);
+      // ── 4) Hilfe ggf. um automatische RTW/NEF/Tragehilfe ergänzen ──
+      if (fehlendeAnforderungen.length === 0 && (addInfo.minPatients || 0) > 0) {
+        hilfeAnforderungen.unshift(${addInfo.minPatients}x RTW);
+        console.log(➕ RTW-Anforderung (min. Patienten): ${addInfo.minPatients}x RTW);
+      }
+      if ((addInfo.carryProb || 0) > 0) {
+        hilfeAnforderungen.unshift(1x Löschfahrzeug);
+        console.log(➕ Tragehilfe-Anforderung: 1x Löschfahrzeug);
+      }
+      if (fehlendeAnforderungen.length === 0 && (addInfo.nefProb || 0) >= 40) {
+        if (addInfo.nefProb === 100) {
+          hilfeAnforderungen.unshift(1x NAW);
+          console.log(➕ NAW-Anforderung (100%));
+        } else {
+          hilfeAnforderungen.unshift(1x NEF);
+          console.log(➕ NEF-Anforderung (${addInfo.nefProb}%));
+        }
+      }
 
-          // "Weitere Informationen"
-          const infoTable = [...helpDoc.querySelectorAll('table')]
-            .find(t => t.querySelector('th') && /weitere informationen/i.test(t.querySelector('th').textContent));
+      // ── 5) Quelle wählen ──
+      const quelle = fehlendeAnforderungen.length ? fehlendeAnforderungen : hilfeAnforderungen;
+      console.log(Anforderungsquelle: ${fehlendeAnforderungen.length ? '🚨 Fehlende Anforderungen' : '📖 Hilfeseite'});
+      console.table(quelle.map(v => ({ Wert: v })));
 
-          const addInfo = {};
-          if (infoTable) {
-            [...infoTable.querySelectorAll('tbody tr')].forEach(tr => {
-              const key = tr.children[0]?.textContent.trim() || '';
-              const value = tr.children[1]?.textContent.trim() || '';
-              if (/Mindest Patientenanzahl/i.test(key)) addInfo.minPatients = parseInt(value, 10);
-              if (/NEF Anforderungswahrscheinlichkeit/i.test(key)) addInfo.nefProb = parseInt(value, 10);
-              if (/RTH Anforderungswahrscheinlichkeit/i.test(key)) addInfo.rthProb = parseInt(value, 10);
-              if (/Tragehilfe Anforderungswahrscheinlichkeit/i.test(key)) addInfo.carryProb = parseInt(value, 10);
-            });
-          }
+      // ── 6) Patienten bestimmen ──
+      const uiPatients = patienten;
+      const helpPatients = addInfo.minPatients || 0;
+      const actualPatients = Math.max(uiPatients, helpPatients);
+      const istHilfeSeite = fehlendeAnforderungen.length === 0;
 
-          // Credits aus Hilfe
-          let helpCredits = '';
-          const belohnungTable = [...helpDoc.querySelectorAll('table')]
-            .find(t => t.querySelector('th') && /belohnung/i.test(t.querySelector('th').textContent));
-          if (belohnungTable) {
-            const creditRow = [...belohnungTable.querySelectorAll('tr')]
-              .find(tr => /credits im durchschnitt/i.test(tr.textContent));
-            if (creditRow) {
-              const val = creditRow.querySelector('td:last-child')?.textContent.trim() || '';
-              helpCredits = val.replace(/\./g, '');
-            }
-          }
+      // ── 7) Fahrzeuge wählen ──
+      let typeIdCounts = {}, selectedTypeCounts = {}, missingTypeCounts = {};
+({ typeIdCounts, selectedTypeCounts, missingTypeCounts } = selectVehiclesByRequirement(
+  quelle,
+  vehicleTypeNameVariants,
+  actualPatients,
+  istHilfeSeite,
+  addInfo.nefProb || 0,
+  addInfo.rthProb || 0
+));
 
-          if (helpCredits) credits = helpCredits;
+      // ── 8) Prüfen & InfoBox anzeigen ──
+      allOk = Object.entries(typeIdCounts)
+        .every(([tid, need]) => (selectedTypeCounts[tid] || 0) >= need);
 
-          // Cache + MinCredits Skip aus Hilfe
-          const cNum = parseInt(String(credits).replace(/\D/g, ''), 10) || 0;
-          if (cNum > 0) cacheSetCredit(missionTypeId, cNum);
+      renderInfoBox(
+  doc,
+  typeIdCounts,
+  selectedTypeCounts,
+  patienten,
+  gefangene,
+  einsatzName,
+  missionTypeId,
+  eingangsZeit,
+  fehlendeAnforderungen,
+  hilfeAnforderungen,
+  '',
+  credits,
+  missingTypeCounts
+);
 
-          if (window.AAO_MINCRED_ON && cNum > 0 && cNum < Number(window.AAO_MINCRED_VAL || 0)) {
-            console.log(`💰 Skip (Hilfe->Cache): ${cNum} < ${window.AAO_MINCRED_VAL} (Typ ${missionTypeId})`);
-            skipMissionFast(doc);
-            try { document.body.removeChild(invisible); } catch {}
-            return;
-          }
-
-          // Hilfe ggf. ergänzen
-          if (fehlendeAnforderungen.length === 0 && (addInfo.minPatients || 0) > 0) {
-            hilfeAnforderungen.unshift(`${addInfo.minPatients}x RTW`);
-          }
-          if ((addInfo.carryProb || 0) > 0) {
-            hilfeAnforderungen.unshift(`1x Löschfahrzeug`);
-          }
-          if (fehlendeAnforderungen.length === 0 && (addInfo.nefProb || 0) >= 40) {
-            hilfeAnforderungen.unshift(addInfo.nefProb === 100 ? `1x NAW` : `1x NEF`);
-          }
-
-          // Quelle wählen
-          const quelle = fehlendeAnforderungen.length ? fehlendeAnforderungen : hilfeAnforderungen;
-
-          // Patienten bestimmen
-          const uiPatients = patienten;
-          const helpPatients = addInfo.minPatients || 0;
-          const actualPatients = Math.max(uiPatients, helpPatients);
-          const istHilfeSeite = fehlendeAnforderungen.length === 0;
-
-          // Fahrzeuge wählen
-          let typeIdCounts = {}, selectedTypeCounts = {}, missingTypeCounts = {};
-          ({ typeIdCounts, selectedTypeCounts, missingTypeCounts } = selectVehiclesByRequirement(
-            quelle,
-            vehicleTypeNameVariants,
-            actualPatients,
-            istHilfeSeite,
-            addInfo.nefProb || 0,
-            addInfo.rthProb || 0
-          ));
-
-          // Prüfen & InfoBox
-          allOk = Object.entries(typeIdCounts)
-            .every(([tid, need]) => (selectedTypeCounts[tid] || 0) >= need);
-
+      // ── 9) Nachladen falls nötig ──
+      if (!allOk && iframe._reloadAttempts < MAX_RELOADS) {
+        const btn = doc.querySelector('a.missing_vehicles_load');
+        if (btn) {
+          iframe._reloadAttempts++;
           renderInfoBox(
-            doc,
-            typeIdCounts,
-            selectedTypeCounts,
-            patienten,
-            gefangene,
-            einsatzName,
-            missionTypeId,
-            eingangsZeit,
-            fehlendeAnforderungen,
-            hilfeAnforderungen,
-            '',
+  doc,
+  typeIdCounts,
+  selectedTypeCounts,
+  patienten,
+  gefangene,
+  einsatzName,
+  missionTypeId,
+  eingangsZeit,
+  fehlendeAnforderungen,
+  hilfeAnforderungen,
+            Nachladen (Versuch ${iframe._reloadAttempts}/${MAX_RELOADS})…, // statusText
             credits,
             missingTypeCounts
           );
-
-          // Nachladen falls nötig
-          if (!allOk && iframe._reloadAttempts < MAX_RELOADS) {
-            const btn = doc.querySelector('a.missing_vehicles_load');
-            if (btn) {
-              iframe._reloadAttempts++;
-              renderInfoBox(
-                doc,
-                typeIdCounts,
-                selectedTypeCounts,
-                patienten,
-                gefangene,
-                einsatzName,
-                missionTypeId,
-                eingangsZeit,
-                fehlendeAnforderungen,
-                hilfeAnforderungen,
-                `Nachladen (Versuch ${iframe._reloadAttempts}/${MAX_RELOADS})…`,
-                credits,
-                missingTypeCounts
-              );
-              btn.click();
-              waitForVehicleListUpdate(doc, () => injectLogic(iframe));
-              return;
-            }
-          }
-
-          if (allOk) iframe._reloadAttempts = 0;
-          if (!allOk && iframe._reloadAttempts >= MAX_RELOADS) iframe._reloadAttempts = 0;
-
-        } catch (e) {
-          console.error('❗ Fehler im Einsatzhilfe-Parser:', e);
+          btn.click();
+          waitForVehicleListUpdate(doc, () => injectLogic(iframe));
+          return;
         }
+      }
 
-        // iframe entfernen
-        try { document.body.removeChild(invisible); } catch {}
-      }, 250);
-    };
-
-  } finally {
-    iframe._injectRunning = false;
-  }
-}
-
-
-
-
-// ─────────────────────────────────────────────────────────────
-// ✅ IFrame-Watcher: injectLogic auch bei Missionswechsel (AJAX/Turbo)
-// ─────────────────────────────────────────────────────────────
-function getMissionKeyFromDoc(d) {
-  if (!d) return '';
-  const typeId =
-    d.querySelector('#mission_general_info')?.getAttribute('data-mission-type') || '';
-  const h1 =
-    d.querySelector('#missionH1')?.textContent?.trim() || '';
-  const holder =
-    d.querySelector('[id^="mission_bar_holder_"]')?.id || '';
-  return `${typeId}|${h1}|${holder}`;
-}
-
-function startMissionWatcher(iframe) {
-  if (!iframe || iframe._aaoWatcherStarted) return;
-  iframe._aaoWatcherStarted = true;
-
-  let lastKey = '';
-
-  const tick = async () => {
-    if (window.AAO_ABORTED) return;
-
-    // iframe evtl. nicht sichtbar → dann nix tun
-    if (iframe.style.display === 'none') return;
-
-    const d = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!d) return;
-
-    const key = getMissionKeyFromDoc(d);
-    if (!key) return;
-
-    if (key !== lastKey) {
-      lastKey = key;
-      // kleiner Delay, damit DOM wirklich steht
-      setTimeout(() => injectLogic(iframe), 250);
+      if (allOk) {
+        renderInfoBox(
+          doc, typeIdCounts, selectedTypeCounts, patienten, gefangene, einsatzName,
+          missionTypeId, eingangsZeit, fehlendeAnforderungen, hilfeAnforderungen,
+          'Alle Anforderungen erfüllt – bereit zur Alarmierung!', // statusText
+          credits,
+  missingTypeCounts
+);
+        iframe._reloadAttempts = 0;
+      } else if (iframe._reloadAttempts >= MAX_RELOADS) {
+        renderInfoBox(
+          doc, typeIdCounts, selectedTypeCounts, patienten, gefangene, einsatzName,
+          missionTypeId, eingangsZeit, fehlendeAnforderungen, hilfeAnforderungen,
+          '⚠️ Maximale Nachladeversuche erreicht, es fehlen noch Fahrzeuge!', // statusText
+          credits,
+  missingTypeCounts
+);
+        iframe._reloadAttempts = 0;
+      }
+    } catch (e) {
+      console.error('❗ Fehler im Einsatzhilfe-Parser:', e);
     }
-  };
 
-  // 1) normaler load (wenn es einen echten Reload gibt)
-  iframe.addEventListener('load', () => tick(), true);
+    // Unsichtbares IFrame nur entfernen, wenn kein Nachladen nötig
+    if (allOk || !doc.querySelector('a.missing_vehicles_load')) {
+      document.body.removeChild(invisible);
+    }
+  }, 250);
+};
+} // <--- schließt function injectLogic(...)
 
-  // 2) Polling für AJAX/Turbo-Wechsel
-  setInterval(tick, 500);
-
-  // 3) sofort einmal starten
-  tick();
-}
-
-// Parent-Observer: sobald ein Missions-iframe sichtbar ist → watcher starten
-const observer = new MutationObserver(() => {
-  const iframe = [...document.querySelectorAll('iframe.lightbox_iframe')]
-    .find(f => (f.src || '').includes('/missions/') && f.style.display !== 'none');
-
-  if (!iframe) return;
-  startMissionWatcher(iframe);
+// ▪ Beobachter, der bei Iframe-Öffnung injectLogic triggert
+const observer = new MutationObserver(()=>{
+    const iframe=[...document.querySelectorAll('iframe.lightbox_iframe')]
+        .find(f=>f.src.includes('/missions/') && f.style.display!=='none');
+    if(!iframe|| iframe.dataset.done) return;
+    iframe.dataset.done='1';
+    iframe.addEventListener('load',()=>setTimeout(()=>injectLogic(iframe),500));
+    if(iframe.contentDocument.readyState==='complete'){
+        setTimeout(()=>injectLogic(iframe),500);
+    }
 });
-observer.observe(document.body, { childList: true, subtree: true });
-
+observer.observe(document.body,{childList:true,subtree:true});
 
 // Bearbeitung von Sprechwünschen
 function processAllPatientRequests(mainDoc) {
@@ -3107,8 +2497,6 @@ function processAllPatientRequests(mainDoc) {
     // Optional: Nach x Sekunden Observer wieder deaktivieren, damit er nicht ewig läuft
     setTimeout(() => observer.disconnect(), 30000);
 }
-
-
 
 function handleKHAndStatus5(khIframe, onDone) {
     const khDoc = khIframe.contentDocument || khIframe.contentWindow.document;
@@ -3289,6 +2677,5 @@ function pick(v) {
   try { cb.click(); } catch { cb.checked = false; }
   return !cb.checked;
 }
-
 
 })();
